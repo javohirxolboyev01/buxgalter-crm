@@ -2,7 +2,7 @@ import { type QueryClient, useMutation, useQuery, useQueryClient } from '@tansta
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { api } from '@/lib/api';
-import { errorText } from '@/lib/errors';
+import { showError } from '@/lib/errors';
 import type { AccountantOption, Task, TaskStatus } from '@/lib/types';
 
 export function invalidateTasks(qc: QueryClient) {
@@ -59,12 +59,12 @@ export function useMarkDone() {
                 invalidateTasks(qc);
                 toast.info(t('task.undone'));
               })
-              .catch((e) => toast.error(errorText(e, t)));
+              .catch((e) => showError(e, t));
           },
         },
       });
     },
-    onError: (e) => toast.error(errorText(e, t)),
+    onError: (e) => showError(e, t),
   });
 }
 
@@ -76,7 +76,7 @@ export function useChangeStatus() {
     mutationFn: ({ taskId, status }: { taskId: number; status: Exclude<TaskStatus, 'DONE' | 'CANCELLED'> }) =>
       api.patch<Task>(`/tasks/${taskId}/status`, { status }),
     onSuccess: () => invalidateTasks(qc),
-    onError: (e) => toast.error(errorText(e, t)),
+    onError: (e) => showError(e, t),
   });
   return (taskId: number, status: TaskStatus) =>
     status === 'DONE' ? done.mutate({ taskId }) : status !== 'CANCELLED' && m.mutate({ taskId, status });

@@ -1,5 +1,6 @@
 import request from 'supertest';
 import { beforeAll, describe, expect, it } from 'vitest';
+import { TARIFF_GRACE_DAYS } from '../src/common/auth';
 import { forEachCompany } from '../src/common/tenancy';
 import { currentPeriod } from '../src/common/time';
 import { asSystem } from '../src/db';
@@ -171,6 +172,48 @@ describe('tarif muddati va bloklash', () => {
     expect(hist[0]).toMatchObject({ plan: 'MONTHLY', periods: 2, amount: 500000 });
   });
 
+  it('imtiyozli davr ham o\'tsa kompaniya yopiladi: faqat profil va tarif to\'lovi', async () => {
+    const past = new Date(Date.now() - (TARIFF_GRACE_DAYS + 2) * 86400_000).toISOString().slice(0, 10);
+    expect((await P.patch(`/api/platform/companies/${companyB}`, { paidUntil: past })).status).toBe(200);
+    // Ko'rish ham yopiq
+    const r = await LB.get('/api/clients');
+    expect(r.status).toBe(402);
+    expect(r.body.code).toBe('SUBSCRIPTION_LOCKED');
+    expect((await LB.get('/api/chat/contacts')).status).toBe(402);
+    expect((await LB.get('/api/notifications/unread-count')).status).toBe(402);
+    // Ochiq: profil, kompaniya holati, to'lov rekvizitlari
+    expect((await LB.get('/api/me')).status).toBe(200);
+    const c = await LB.get('/api/company');
+    expect(c.status).toBe(200);
+    expect(c.body).toMatchObject({ readOnly: true, locked: true });
+    expect((await LB.get('/api/company/billing')).status).toBe(200);
+    // Logo o'zgartirish (yozish) yopiq
+    expect((await LB.patch('/api/company', { name: 'X' })).status).toBe(402);
+
+    // To'lovdan keyin hammasi qaytadi
+    expect((await P.post(`/api/platform/companies/${companyB}/payments`, { plan: 'MONTHLY', periods: 1, amount: 1 })).status).toBe(201);
+    expect((await LB.get('/api/clients')).status).toBe(200);
+    expect((await LB.get('/api/company')).body).toMatchObject({ readOnly: false, locked: false });
+  });
+
+  it('admin tarifni tugatadi: imtiyozli davr bilan yoki darhol yopish (V48)', async () => {
+    const g = await P.post(`/api/platform/companies/${companyB}/end-tariff`, { immediate: false });
+    expect(g.status).toBe(200);
+    expect(g.body).toMatchObject({ expired: true, locked: false });
+    expect((await LB.get('/api/clients')).status).toBe(200);
+    expect((await LB.post('/api/clients', { stir: '300000009', name: 'Z', taxType: 'AOS' })).status).toBe(402);
+
+    const n = await P.post(`/api/platform/companies/${companyB}/end-tariff`, { immediate: true });
+    expect(n.body).toMatchObject({ expired: true, locked: true });
+    expect((await LB.get('/api/clients')).body.code).toBe('SUBSCRIPTION_LOCKED');
+
+    // To'lovdan keyin ochiladi; keyingi tugashda eski lock_from ta'sir qilmaydi (imtiyozli davr qaytadi)
+    await P.post(`/api/platform/companies/${companyB}/payments`, { plan: 'MONTHLY', periods: 1, amount: 1 });
+    expect((await LB.get('/api/clients')).status).toBe(200);
+    expect((await P.post(`/api/platform/companies/${companyB}/end-tariff`, {})).body).toMatchObject({ expired: true, locked: false });
+    await P.post(`/api/platform/companies/${companyB}/payments`, { plan: 'MONTHLY', periods: 1, amount: 1 });
+  });
+
   it('bloklangan kompaniyaga kirib bo\'lmaydi', async () => {
     await P.patch(`/api/platform/companies/${companyB}`, { status: 'BLOCKED' });
     expect((await LB.get('/api/clients')).status).toBe(403);
@@ -211,5 +254,106 @@ describe('kompaniya brendi (sozlamalar)', () => {
     const before = (await L.get('/api/company')).body.paidUntil;
     await L.patch('/api/company', { name: 'Alfa', paidUntil: '2099-01-01', plan: 'YEARLY' });
     expect((await L.get('/api/company')).body.paidUntil).toBe(before);
+  });
+});
+
+describe('tarif to\'lovi: karta + chek (V47)', () => {
+  const upload = async (login: string, password: string | null, fields: Record<string, string>, file: Buffer = PNG) => {
+    const tok =
+      password === null
+        ? await token(login)
+        : (await request(app).post('/api/auth/login').send({ login, password })).body.accessToken;
+    let r = request(app).post('/api/company/payment-requests').set('Authorization', `Bearer ${tok}`);
+    for (const [k, v] of Object.entries(fields)) r = r.field(k, v);
+    return r.attach('file', file, 'chek.png');
+  };
+
+  it('admin rekvizitni kiritadi, rahbar ko\'radi; buxgalterga yopiq', async () => {
+    const info = { cardNumber: '8600 1234 5678 9012', cardHolder: 'ALIYEV A.', bank: 'Uzcard', contact: '@admin', note: '' };
+    expect((await P.put('/api/platform/payment-info', info)).status).toBe(200);
+    const b = await L.get('/api/company/billing');
+    expect(b.status).toBe(200);
+    expect(b.body.paymentInfo.cardNumber).toBe('8600 1234 5678 9012');
+    expect((await A1.get('/api/company/billing')).status).toBe(403);
+  });
+
+  it('muddat o\'tgan rahbar chek yuboradi, admin tasdiqlaydi — muddat uzayadi', async () => {
+    await P.put('/api/platform/tariffs/YEARLY', { price: 1200000 });
+    const old = new Date(Date.now() - 3 * 86400_000).toISOString().slice(0, 10);
+    await P.patch(`/api/platform/companies/${companyB}`, { paidUntil: old });
+    expect((await LB.get('/api/company')).body.readOnly).toBe(true);
+
+    // rasm emas — rad etiladi
+    const bad = await upload('beta', '24681357', { plan: 'YEARLY' }, Buffer.from('<svg/>'));
+    expect(bad.status).toBe(400);
+
+    const r = await upload('beta', '24681357', { plan: 'YEARLY', periods: '1', note: 'Click orqali' });
+    expect(r.status).toBe(201);
+    expect(r.body).toMatchObject({ plan: 'YEARLY', periods: 1, amount: 1200000, status: 'PENDING' });
+    // bir vaqtda bitta kutilayotgan so'rov
+    expect((await upload('beta', '24681357', { plan: 'MONTHLY' })).status).toBe(409);
+
+    // boshqa kompaniya ko'rmaydi
+    expect((await L.get('/api/company/billing')).body.requests.find((x: any) => x.id === r.body.id)).toBeUndefined();
+    expect((await L.get(`/api/company/payment-requests/${r.body.id}/screenshot`)).status).toBe(404);
+    expect((await LB.get(`/api/company/payment-requests/${r.body.id}/screenshot`)).status).toBe(200);
+
+    const list = await P.get('/api/platform/payment-requests');
+    expect(list.body.map((x: any) => x.id)).toContain(r.body.id);
+    expect((await P.get('/api/platform/companies')).body.find((c: any) => c.id === companyB).hasPendingRequest).toBe(true);
+    const shot = await P.get(`/api/platform/payment-requests/${r.body.id}/screenshot`);
+    expect(shot.status).toBe(200);
+    expect(shot.headers['content-type']).toBe('image/png');
+
+    const ok = await P.post(`/api/platform/payment-requests/${r.body.id}/approve`, { amount: 1100000 });
+    expect(ok.status).toBe(200);
+    expect(ok.body.status).toBe('APPROVED');
+    expect((await P.post(`/api/platform/payment-requests/${r.body.id}/approve`, {})).status).toBe(409);
+
+    const c = (await LB.get('/api/company')).body;
+    expect(c.readOnly).toBe(false);
+    expect(c.plan).toBe('YEARLY');
+    expect(c.daysLeft).toBeGreaterThanOrEqual(364);
+    const billing = (await LB.get('/api/company/billing')).body;
+    expect(billing.payments[0]).toMatchObject({ plan: 'YEARLY', periods: 1, amount: 1100000 });
+    expect(billing.requests[0].status).toBe('APPROVED');
+  });
+
+  it('admin sababi bilan rad etadi; rahbar kutilayotganini bekor qiladi', async () => {
+    const r = await upload('leader', null, { plan: 'MONTHLY' });
+    expect(r.status).toBe(201);
+    expect((await P.post(`/api/platform/payment-requests/${r.body.id}/reject`, { reason: '' })).status).toBe(400);
+    const rej = await P.post(`/api/platform/payment-requests/${r.body.id}/reject`, { reason: 'Summa kelmadi' });
+    expect(rej.body).toMatchObject({ status: 'REJECTED', rejectReason: 'Summa kelmadi' });
+    expect((await L.post(`/api/company/payment-requests/${r.body.id}/cancel`)).status).toBe(409);
+
+    const r2 = await upload('leader', null, { plan: 'MONTHLY' });
+    expect(r2.status).toBe(201);
+    expect((await LB.post(`/api/company/payment-requests/${r2.body.id}/cancel`)).status).toBe(409); // boshqa kompaniya
+    const c = await L.post(`/api/company/payment-requests/${r2.body.id}/cancel`);
+    expect(c.body.status).toBe('CANCELLED');
+    expect((await P.get('/api/platform/payment-requests')).body.find((x: any) => x.id === r2.body.id)).toBeUndefined();
+  });
+});
+
+describe('platforma: rahbar kirish ma\'lumoti', () => {
+  it('platforma admini rahbar yaratadi, login/parolini tiklaydi; band login rad etiladi', async () => {
+    const created = await P.post(`/api/platform/companies/${companyB}/leaders`, { fullName: 'Beta ikkinchi', login: 'beta2', password: '13572468' });
+    expect(created.status).toBe(201);
+    expect((await P.post(`/api/platform/companies/${companyB}/leaders`, { fullName: 'Y Y', login: 'leader', password: '13572468' })).status).toBe(409);
+    const list = (await P.get(`/api/platform/companies/${companyB}/leaders`)).body;
+    expect(list.map((u: any) => u.login)).toEqual(['beta', 'beta2']);
+    // Boshqa kompaniya id'si bilan tahrirlab bo'lmaydi
+    expect((await P.patch(`/api/platform/companies/1/leaders/${created.body.id}`, { password: '11112222' })).status).toBe(404);
+    expect((await P.patch(`/api/platform/companies/${companyB}/leaders/${created.body.id}`, { login: 'leader' })).status).toBe(409);
+    const r = await P.patch(`/api/platform/companies/${companyB}/leaders/${created.body.id}`, { login: 'beta3', password: '99887766' });
+    expect(r.status).toBe(200);
+    expect(r.body.login).toBe('beta3');
+    expect((await request(app).post('/api/auth/login').send({ login: 'beta2', password: '13572468' })).status).toBe(401);
+    const login = await request(app).post('/api/auth/login').send({ login: 'beta3', password: '99887766' });
+    expect(login.status).toBe(200);
+    // Yangi rahbar B kompaniyasida: o'z xodimlari ro'yxatida beta bor, A kompaniyasining xodimlari yo'q
+    const users = (await api(login.body.accessToken).get('/api/users')).body.map((u: any) => u.login).sort();
+    expect(users).toEqual(['beta', 'beta3']);
   });
 });

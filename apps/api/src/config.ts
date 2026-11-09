@@ -38,6 +38,8 @@ export const config = {
     username: process.env.TELEGRAM_BOT_USERNAME ?? '',
     // Chat fayllari ombori: bot admin bo'lgan yopiq kanal id'si (-100...). Bo'sh bo'lsa chatda fayl yuborilmaydi
     storageChatId: process.env.TELEGRAM_STORAGE_CHAT_ID ?? '',
+    // Platforma admini(lari) chat/guruh id'si: rahbar tarif chekini yuborganda xabar (V47). Bo'sh bo'lsa yuborilmaydi
+    platformChatId: process.env.TELEGRAM_PLATFORM_CHAT_ID ?? '',
   },
   schedulerEnabled: bool(process.env.SCHEDULER_ENABLED, env !== 'test'),
   backup: {

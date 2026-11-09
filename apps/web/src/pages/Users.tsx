@@ -12,7 +12,7 @@ import { Empty, QueryState } from '@/components/ui/states';
 import { TableSkeleton } from '@/components/ui/skeleton';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
-import { errorText } from '@/lib/errors';
+import { showError } from '@/lib/errors';
 import { fmtDate } from '@/lib/time';
 import type { Lang, Role, User } from '@/lib/types';
 
@@ -47,7 +47,7 @@ export default function Users() {
     void qc.invalidateQueries({ queryKey: ['users'] });
     void qc.invalidateQueries({ queryKey: ['accountants'] });
   };
-  const onErr = (e: unknown) => toast.error(errorText(e, t));
+  const onErr = (e: unknown) => showError(e, t);
 
   const save = useMutation({
     mutationFn: (e: Edit) =>

@@ -18,7 +18,7 @@ import { FormSkeleton, KpiSkeleton, TableSkeleton } from '@/components/ui/skelet
 import { api, qs } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { cn } from '@/lib/cn';
-import { errorText } from '@/lib/errors';
+import { showError } from '@/lib/errors';
 import { fmtDateTime, fmtIsoDate, todayIso } from '@/lib/time';
 import type { Lead, LeadCard, LeadImportReport, LeadResult, LeadStats, LeadStatus, LeadView, Paged } from '@/lib/types';
 
@@ -91,7 +91,7 @@ function LeadDialog({ id, onClose, onConvert }: { id: number | null; onClose: ()
   }, [id]);
 
   const refresh = () => qc.invalidateQueries({ queryKey: ['leads'] });
-  const onErr = (e: unknown) => toast.error(errorText(e, t));
+  const onErr = (e: unknown) => showError(e, t);
   const saveContacts = useMutation({
     mutationFn: () => api.patch(`/leads/${id}`, { phone: contacts.phone || null, director: contacts.director || null }),
     onSuccess: () => {
@@ -278,7 +278,7 @@ function ImportDialog({ open, onClose }: { open: boolean; onClose: () => void })
       void qc.invalidateQueries({ queryKey: ['leads'] });
       onClose();
     },
-    onError: (e) => toast.error(errorText(e, t)),
+    onError: (e) => showError(e, t),
   });
 
   const skipped = [

@@ -69,8 +69,8 @@ export function PageHeader({
   breadcrumb?: boolean;
 }) {
   return (
-    // Header (h-14) ostida qotadi; manfiy margin + padding: tagidan o'tayotgan kontent chetlardan ko'rinmasin
-    <div className="sticky top-14 z-30 -mx-2 -mt-2 mb-2 shrink-0 space-y-2 bg-page px-2 pt-2 sm:-mx-4 sm:-mt-4 sm:px-4 sm:pt-4">
+    // Header (h-14) va tarif banneri (--banner-h) ostida qotadi; manfiy margin + padding: tagidan o'tayotgan kontent chetlardan ko'rinmasin
+    <div className="sticky top-[calc(3.5rem_+_var(--banner-h,0px))] z-30 -mx-2 -mt-2 mb-2 shrink-0 space-y-2 bg-page px-2 pt-2 sm:-mx-4 sm:-mt-4 sm:px-4 sm:pt-4">
       {breadcrumb && <Breadcrumbs items={crumbs} current={title} />}
       <div className="section-container flex min-h-[52px] flex-wrap items-center justify-between gap-x-3 gap-y-2 sm:px-4 sm:py-2.5">
         <h1 className="flex min-w-0 items-center gap-2.5 text-xl font-semibold leading-tight tracking-tight text-foreground">

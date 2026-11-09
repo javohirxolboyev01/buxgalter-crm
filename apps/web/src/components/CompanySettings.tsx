@@ -8,16 +8,13 @@ import { Card, CardHeader } from '@/components/ui/card';
 import { Field, Input } from '@/components/ui/input';
 import { QueryState } from '@/components/ui/states';
 import { api } from '@/lib/api';
-import { cn } from '@/lib/cn';
 import { type Company, COMPANY_KEY, useCompany } from '@/lib/company';
-import { errorText } from '@/lib/errors';
-import { fmtDate } from '@/lib/time';
+import { showError } from '@/lib/errors';
 
 const LOGO_MAX_KB = 300;
 const LOGO_TYPES = ['image/png', 'image/jpeg', 'image/webp'];
-const fmtMoney = (n: number) => new Intl.NumberFormat('ru-RU').format(n);
 
-/** Sozlamalar → Kompaniya: nom va logo (rahbar), tarif holati (faqat ko'rish — platforma admini o'zgartiradi) */
+/** Sozlamalar → Kompaniya: nom va logo (rahbar). Tarif va to'lovlar — alohida tab (BillingSettings) */
 export function CompanySettings() {
   const { t } = useTranslation();
   const qc = useQueryClient();
@@ -32,7 +29,7 @@ export function CompanySettings() {
     qc.setQueryData<Company>(COMPANY_KEY, (old) => (old ? { ...old, ...c } : c));
     toast.success(t('common.saved'));
   };
-  const onErr = (e: unknown) => toast.error(errorText(e, t));
+  const onErr = (e: unknown) => showError(e, t);
   const saveName = useMutation({ mutationFn: () => api.patch<Company>('/company', { name: name.trim() }), onSuccess: onDone, onError: onErr });
   const uploadLogo = useMutation({
     mutationFn: (file: File) => {
@@ -102,39 +99,6 @@ export function CompanySettings() {
                   </div>
                 </div>
               </Field>
-            </div>
-          </Card>
-
-          <Card>
-            <CardHeader title={t('company.tariffTitle')} />
-            <div className="space-y-3 px-4 pb-4 text-sm">
-              <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2">
-                <dt className="text-gray-500">{t('company.plan')}</dt>
-                <dd className="font-medium">{q.data.plan ? t(`company.planName.${q.data.plan}`) : '—'}</dd>
-                <dt className="text-gray-500">{t('company.paidUntil')}</dt>
-                <dd className={cn('font-medium', q.data.readOnly && 'text-red-600')}>
-                  {q.data.paidUntil ? fmtDate(q.data.paidUntil) : t('company.unlimited')}
-                  {q.data.daysLeft !== null && !q.data.readOnly && (
-                    <span className="ml-2 font-normal text-gray-500">({t('company.daysLeft', { count: q.data.daysLeft })})</span>
-                  )}
-                </dd>
-                <dt className="text-gray-500">{t('company.state')}</dt>
-                <dd className={cn('font-medium', q.data.readOnly ? 'text-red-600' : 'text-green-700 dark:text-green-400')}>
-                  {t(q.data.readOnly ? 'company.stateReadOnly' : 'company.stateActive')}
-                </dd>
-              </dl>
-              <div className="rounded-md bg-gray-50 p-3 dark:bg-white/5">
-                <p className="mb-2 font-medium">{t('company.prices')}</p>
-                <ul className="space-y-1">
-                  {q.data.tariffs.map((tf) => (
-                    <li key={tf.code} className="flex justify-between gap-4">
-                      <span>{t(`company.planName.${tf.code}`)}</span>
-                      <span className="font-medium">{tf.price ? `${fmtMoney(tf.price)} ${t('company.sum')}` : '—'}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-              <p className="text-gray-600">{t('company.payHint')}</p>
             </div>
           </Card>
         </div>

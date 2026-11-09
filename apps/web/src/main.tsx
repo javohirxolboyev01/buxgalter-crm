@@ -1,4 +1,4 @@
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { MutationCache, QueryCache, QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
@@ -7,6 +7,8 @@ import { Toaster } from 'sonner';
 import App from './App';
 import { ApiError } from './lib/api';
 import { AuthProvider } from './lib/auth';
+import { COMPANY_KEY } from './lib/company';
+import { isSubscriptionExpired, openTariffModal } from './lib/tariffModal';
 import { applyTheme, useTheme } from './lib/theme';
 import './i18n';
 import './index.css';
@@ -32,7 +34,19 @@ function ThemedToaster() {
   );
 }
 
-const queryClient = new QueryClient({
+// Sessiya davomida tarif tugasa (402): kompaniya holati yangilanadi — banner yoki "tarif tugagan" ekrani darhol chiqadi
+const onSubscriptionError = (e: unknown) => {
+  if (e instanceof ApiError && e.status === 402) void queryClient.invalidateQueries({ queryKey: COMPANY_KEY, exact: true });
+};
+// Muddat tugagan (faqat o'qish) kompaniyada yozish urinishi: toast o'rniga "Tarif tanlang" oynasi (showError toast chiqarmaydi)
+const onMutationError = (e: unknown) => {
+  onSubscriptionError(e);
+  if (isSubscriptionExpired(e)) openTariffModal();
+};
+
+const queryClient: QueryClient = new QueryClient({
+  queryCache: new QueryCache({ onError: onSubscriptionError }),
+  mutationCache: new MutationCache({ onError: onMutationError }),
   defaultOptions: {
     queries: {
       staleTime: 15_000,

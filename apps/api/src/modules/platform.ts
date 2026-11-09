@@ -4,14 +4,14 @@ import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
 import jwt from 'jsonwebtoken';
 import { z } from 'zod';
-import { COMPANY_EXPIRED_SQL } from '../common/auth';
+import { COMPANY_EXPIRED_SQL, COMPANY_LOCKED_SQL } from '../common/auth';
 import { AppError, notFound, parse } from '../common/errors';
 import { config } from '../config';
 import { asSystem, one, pool, q, tx, withCompany } from '../db';
 import { generateCurrentForCompany } from '../scheduler';
 import { hashPassword, passwordSchema } from './auth';
 
-// Platforma (SaaS egasi) paneli: kompaniyalar, tarif va qo'lda kiritiladigan to'lovlar.
+// Platforma (SaaS egasi) paneli: kompaniyalar, tarif, qo'lda kiritiladigan to'lovlar va chek so'rovlari (V47).
 // Qaror: alohida jadval (platform_admin) va alohida JWT kaliti — kompaniya xodimining tokeni bu yerga
 // o'tmaydi va aksincha. Barcha so'rovlar tizim rejimida (RLS bypass): admin hamma kompaniyani ko'radi.
 
@@ -71,11 +71,12 @@ export async function bootstrapPlatformAdmin(login: string, password: string, fu
 }
 
 const COMPANY = `c.id, c.name, c.status, c.plan, c.paid_until AS "paidUntil", c.contact_phone AS "contactPhone", c.note,
-  c.created_at AS "createdAt", (c.logo IS NOT NULL) AS "hasLogo", ${COMPANY_EXPIRED_SQL} AS expired,
+  c.created_at AS "createdAt", (c.logo IS NOT NULL) AS "hasLogo", ${COMPANY_EXPIRED_SQL} AS expired, ${COMPANY_LOCKED_SQL} AS locked,
   CASE WHEN c.paid_until IS NULL THEN NULL ELSE c.paid_until - (now() AT TIME ZONE 'Asia/Tashkent')::date END AS "daysLeft",
   (SELECT count(*) FROM app_user u WHERE u.company_id = c.id AND u.active AND u.deleted_at IS NULL)::int AS "usersCount",
   (SELECT count(*) FROM client k WHERE k.company_id = c.id AND k.status <> 'ARCHIVED')::int AS "clientsCount",
-  (SELECT u.login FROM app_user u WHERE u.company_id = c.id AND u.role = 'LEADER' ORDER BY u.id LIMIT 1) AS "leaderLogin"`;
+  (SELECT u.login FROM app_user u WHERE u.company_id = c.id AND u.role = 'LEADER' ORDER BY u.id LIMIT 1) AS "leaderLogin",
+  EXISTS (SELECT 1 FROM payment_request r WHERE r.company_id = c.id AND r.status = 'PENDING') AS "hasPendingRequest"`;
 
 const loadCompany = (db: typeof pool | import('pg').PoolClient, id: number) =>
   one(db, `SELECT ${COMPANY} FROM company c WHERE c.id = $1 AND NOT c.is_template`, [id]);
@@ -228,53 +229,246 @@ platformRouter.patch('/companies/:id', async (req, res) => {
 });
 
 /**
- * To'lov (qo'lda): muddat davom ettiriladi — hali tugamagan bo'lsa paid_until'dan, tugagan bo'lsa bugundan.
- * Tarif turi oxirgi to'lovdagisiga almashadi. Muddat o'tgan kompaniyaga shu oy vazifalari darhol yaratiladi.
+ * Tarifni tugatish (V48): muddat kechagi kunga tushadi — kompaniya darhol "muddati o'tgan" bo'ladi.
+ * immediate=false — odatdagi imtiyozli davr (3 kun faqat o'qish, keyin yopiladi); true — bugundan yopiq.
+ * Muddat allaqachon o'tgan bo'lsa paid_until o'zgarmaydi. To'lov kiritilsa yoki chek tasdiqlansa — bugundan qayta ochiladi.
  */
+platformRouter.post('/companies/:id/end-tariff', async (req, res) => {
+  const id = parse(z.coerce.number().int().positive(), req.params.id);
+  const body = parse(z.object({ immediate: z.boolean().default(false) }), req.body);
+  const r = await pool.query(
+    `UPDATE company SET paid_until = least(coalesce(paid_until, t.today - 1), t.today - 1),
+            lock_from = CASE WHEN $2 THEN t.today ELSE NULL END
+     FROM (SELECT (now() AT TIME ZONE 'Asia/Tashkent')::date AS today) t
+     WHERE id = $1 AND NOT is_template`,
+    [id, body.immediate],
+  );
+  if (!r.rowCount) throw notFound('Kompaniya');
+  console.log(`[platform] admin ${admin(req).id}: kompaniya ${id} tarifi tugatildi (${body.immediate ? 'darhol yopildi' : 'imtiyozli davr bilan'})`);
+  res.json(await loadCompany(pool, id));
+});
+
+/**
+ * To'lov (qo'lda): muddat davom ettiriladi — hali tugamagan bo'lsa paid_until'dan, tugagan bo'lsa bugundan.
+ * Tarif turi oxirgi to'lovdagisiga almashadi. Qo'lda kiritish va chek so'rovini tasdiqlash — ikkalasi shu yerdan.
+ */
+async function addCompanyPayment(
+  db: import('pg').PoolClient,
+  companyId: number,
+  p: { plan: (typeof PLANS)[number]; periods: number; amount: number; note: string | null; adminId: number },
+) {
+  const c = await one<{ from: string; until: string }>(
+    db,
+    `SELECT greatest(coalesce(paid_until, today), today) AS "from",
+            (greatest(coalesce(paid_until, today), today) + make_interval(months => $2))::date AS "until"
+     FROM company, (SELECT (now() AT TIME ZONE 'Asia/Tashkent')::date AS today) t
+     WHERE id = $1 AND NOT is_template FOR UPDATE OF company`,
+    [companyId, PLAN_MONTHS[p.plan] * p.periods],
+  );
+  if (!c) throw notFound('Kompaniya');
+  await db.query('UPDATE company SET plan = $2, paid_until = $3 WHERE id = $1', [companyId, p.plan, c.until]);
+  const r = await one<{ id: number }>(
+    db,
+    `INSERT INTO company_payment (company_id, plan, periods, amount, paid_from, paid_until, note, created_by)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`,
+    [companyId, p.plan, p.periods, p.amount, c.from, c.until, p.note, p.adminId],
+  );
+  return r!.id;
+}
+
+/** Muddat o'tgan paytda scheduler kompaniyani o'tkazib yuborgan: joriy oy vazifalari endi (idempotent) */
+const generateAfterPayment = (id: number) =>
+  withCompany(id, () => generateCurrentForCompany(id)).catch((e) => console.error('[payment] generator:', e));
+
+const paymentBody = z.object({
+  plan: z.enum(PLANS),
+  periods: z.number().int().min(1).max(36).default(1),
+  amount: z.number().int().min(0).max(1e12),
+  note: z.string().trim().max(500).nullable().optional(),
+});
+
 platformRouter.post('/companies/:id/payments', async (req, res) => {
   const id = parse(z.coerce.number().int().positive(), req.params.id);
-  const body = parse(
-    z.object({
-      plan: z.enum(PLANS),
-      periods: z.number().int().min(1).max(36).default(1),
-      amount: z.number().int().min(0).max(1e12),
-      note: z.string().trim().max(500).nullable().optional(),
-    }),
-    req.body,
-  );
-  await tx(async (db) => {
-    const c = await one<{ from: string; until: string }>(
-      db,
-      `SELECT greatest(coalesce(paid_until, today), today) AS "from",
-              (greatest(coalesce(paid_until, today), today) + make_interval(months => $2))::date AS "until"
-       FROM company, (SELECT (now() AT TIME ZONE 'Asia/Tashkent')::date AS today) t
-       WHERE id = $1 AND NOT is_template FOR UPDATE OF company`,
-      [id, PLAN_MONTHS[body.plan] * body.periods],
-    );
-    if (!c) throw notFound('Kompaniya');
-    await db.query('UPDATE company SET plan = $2, paid_until = $3 WHERE id = $1', [id, body.plan, c.until]);
-    await db.query(
-      `INSERT INTO company_payment (company_id, plan, periods, amount, paid_from, paid_until, note, created_by)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-      [id, body.plan, body.periods, body.amount, c.from, c.until, body.note ?? null, admin(req).id],
-    );
-  });
-  // Muddat o'tgan paytda scheduler bu kompaniyani o'tkazib yuborgan: joriy oy vazifalari endi (idempotent)
-  await withCompany(id, () => generateCurrentForCompany(id)).catch((e) => console.error('[payment] generator:', e));
+  const body = parse(paymentBody, req.body);
+  await tx((db) => addCompanyPayment(db, id, { ...body, note: body.note ?? null, adminId: admin(req).id }));
+  await generateAfterPayment(id);
   res.status(201).json(await loadCompany(pool, id));
 });
 
-/** Rahbar parolini unutsa: platforma admini yangi parol qo'yadi (sessiyalar yopiladi) */
-platformRouter.post('/companies/:id/leader-password', async (req, res) => {
-  const id = parse(z.coerce.number().int().positive(), req.params.id);
-  const { login, password } = parse(z.object({ login: z.string().trim().min(1), password: passwordSchema }), req.body);
-  const u = await one<{ id: number }>(
-    pool,
-    `UPDATE app_user SET password_hash = $3, failed_login_count = 0, locked_until = NULL
-     WHERE company_id = $1 AND login = $2 AND role = 'LEADER' RETURNING id`,
-    [id, login, await hashPassword(password)],
+// ---------- To'lov rekvizitlari (rahbar Sozlamalar → Kompaniya'da ko'radi) ----------
+export const paymentInfoSchema = z.object({
+  cardNumber: z.string().trim().max(40).regex(/^[\d ]*$/), // faqat raqam (4 tadan bo'shliq bilan)
+  cardHolder: z.string().trim().max(120),
+  bank: z.string().trim().max(120),
+  contact: z.string().trim().max(200),
+  note: z.string().trim().max(1000),
+});
+export type PaymentInfo = z.infer<typeof paymentInfoSchema>;
+
+export async function loadPaymentInfo(): Promise<PaymentInfo> {
+  const r = await asSystem(() => one<{ value: Partial<PaymentInfo> }>(pool, `SELECT value FROM platform_setting WHERE key = 'payment_info'`));
+  return { cardNumber: '', cardHolder: '', bank: '', contact: '', note: '', ...(r?.value ?? {}) };
+}
+
+platformRouter.get('/payment-info', async (_req, res) => {
+  res.json(await loadPaymentInfo());
+});
+
+platformRouter.put('/payment-info', async (req, res) => {
+  const body = parse(paymentInfoSchema, req.body);
+  await pool.query(
+    `INSERT INTO platform_setting (key, value) VALUES ('payment_info', $1)
+     ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()`,
+    [JSON.stringify(body)],
   );
-  if (!u) throw notFound('Rahbar');
-  await pool.query('UPDATE refresh_token SET revoked_at = now() WHERE user_id = $1 AND revoked_at IS NULL', [u.id]);
-  res.json({ ok: true });
+  res.json(await loadPaymentInfo());
+});
+
+// ---------- To'lov so'rovlari (rahbar yuborgan chek skrinshoti) ----------
+const REQUEST = `r.id, r.company_id AS "companyId", c.name AS "companyName", r.plan, r.periods, r.amount, r.note, r.status,
+  r.reject_reason AS "rejectReason", r.created_at AS "createdAt", u.full_name AS "createdByName",
+  r.reviewed_at AS "reviewedAt", a.full_name AS "reviewedByName", c.paid_until AS "paidUntil"`;
+const REQUEST_FROM = `payment_request r JOIN company c ON c.id = r.company_id
+  LEFT JOIN app_user u ON u.id = r.created_by LEFT JOIN platform_admin a ON a.id = r.reviewed_by`;
+
+platformRouter.get('/payment-requests', async (req, res) => {
+  const { status } = parse(z.object({ status: z.enum(['PENDING', 'ALL']).default('PENDING') }), req.query);
+  res.json(
+    await q(
+      pool,
+      `SELECT ${REQUEST} FROM ${REQUEST_FROM}
+       ${status === 'PENDING' ? `WHERE r.status = 'PENDING' ORDER BY r.created_at` : 'ORDER BY r.created_at DESC LIMIT 100'}`,
+    ),
+  );
+});
+
+platformRouter.get('/payment-requests/:id/screenshot', async (req, res) => {
+  const id = parse(z.coerce.number().int().positive(), req.params.id);
+  const r = await one<{ screenshot: Buffer; mime: string }>(pool, 'SELECT screenshot, screenshot_mime AS mime FROM payment_request WHERE id = $1', [id]);
+  if (!r) throw notFound('So\'rov');
+  res.setHeader('Content-Type', r.mime);
+  res.setHeader('Cache-Control', 'private, max-age=3600');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.send(r.screenshot);
+});
+
+async function lockPending(db: import('pg').PoolClient, id: number) {
+  const r = await one<{ companyId: number; plan: (typeof PLANS)[number]; periods: number; amount: number; status: string }>(
+    db,
+    `SELECT company_id AS "companyId", plan, periods, amount, status FROM payment_request WHERE id = $1 FOR UPDATE`,
+    [id],
+  );
+  if (!r) throw notFound('So\'rov');
+  if (r.status !== 'PENDING') throw new AppError(409, 'PAYMENT_REQUEST_CLOSED', 'So\'rov allaqachon ko\'rib chiqilgan');
+  return r;
+}
+
+/** Tasdiqlash: so'rovdagi tarif va davr bilan odatdagi to'lov yoziladi; summa admin kiritgani (bo'lmasa so'rovdagi) */
+platformRouter.post('/payment-requests/:id/approve', async (req, res) => {
+  const id = parse(z.coerce.number().int().positive(), req.params.id);
+  const body = parse(
+    z.object({ amount: z.number().int().min(0).max(1e12).optional(), note: z.string().trim().max(500).nullable().optional() }),
+    req.body ?? {},
+  );
+  const companyId = await tx(async (db) => {
+    const r = await lockPending(db, id);
+    const paymentId = await addCompanyPayment(db, r.companyId, {
+      plan: r.plan,
+      periods: r.periods,
+      amount: body.amount ?? r.amount,
+      note: body.note || `Chek #${id}`,
+      adminId: admin(req).id,
+    });
+    await db.query(
+      `UPDATE payment_request SET status = 'APPROVED', payment_id = $2, reviewed_by = $3, reviewed_at = now() WHERE id = $1`,
+      [id, paymentId, admin(req).id],
+    );
+    return r.companyId;
+  });
+  await generateAfterPayment(companyId);
+  res.json(await one(pool, `SELECT ${REQUEST} FROM ${REQUEST_FROM} WHERE r.id = $1`, [id]));
+});
+
+platformRouter.post('/payment-requests/:id/reject', async (req, res) => {
+  const id = parse(z.coerce.number().int().positive(), req.params.id);
+  const { reason } = parse(z.object({ reason: z.string().trim().min(1).max(500) }), req.body);
+  await tx(async (db) => {
+    await lockPending(db, id);
+    await db.query(
+      `UPDATE payment_request SET status = 'REJECTED', reject_reason = $2, reviewed_by = $3, reviewed_at = now() WHERE id = $1`,
+      [id, reason, admin(req).id],
+    );
+  });
+  res.json(await one(pool, `SELECT ${REQUEST} FROM ${REQUEST_FROM} WHERE r.id = $1`, [id]));
+});
+
+// ---------- Kompaniya rahbarlari (kirish ma'lumoti) ----------
+// Platforma admini faqat rahbar hisoblari bilan ishlaydi: rahbar kira olmasa login/parolini tiklaydi
+// yoki yangi rahbar ochadi. Buxgalter va operatorlarni rahbar o'zi boshqaradi (kompaniya ichki ma'lumoti).
+const LOGIN = z.string().trim().min(3).max(100).regex(/^[a-zA-Z0-9._-]+$/);
+const LEADER = `u.id, u.full_name AS "fullName", u.login, u.active, coalesce(u.locked_until > now(), false) AS locked,
+  u.created_at AS "createdAt"`;
+
+async function assertLoginFree(db: typeof pool | import('pg').PoolClient, login: string, exceptUserId?: number) {
+  if (await one(db, 'SELECT 1 FROM app_user WHERE login = $1 AND id IS DISTINCT FROM $2::bigint', [login, exceptUserId ?? null])) {
+    throw new AppError(409, 'LOGIN_TAKEN', 'Bu login band, boshqasini tanlang');
+  }
+}
+
+async function companyExists(id: number) {
+  if (!(await one(pool, 'SELECT 1 FROM company WHERE id = $1 AND NOT is_template', [id]))) throw notFound('Kompaniya');
+}
+
+platformRouter.get('/companies/:id/leaders', async (req, res) => {
+  const id = parse(z.coerce.number().int().positive(), req.params.id);
+  await companyExists(id);
+  res.json(
+    await q(pool, `SELECT ${LEADER} FROM app_user u WHERE u.company_id = $1 AND u.role = 'LEADER' AND u.deleted_at IS NULL ORDER BY u.id`, [id]),
+  );
+});
+
+/** Yangi rahbar (masalan, eski rahbar ketgan yoki logini unutilgan) */
+platformRouter.post('/companies/:id/leaders', async (req, res) => {
+  const id = parse(z.coerce.number().int().positive(), req.params.id);
+  const body = parse(z.object({ fullName: z.string().trim().min(2).max(200), login: LOGIN, password: passwordSchema }), req.body);
+  await companyExists(id);
+  const u = await tx(async (db) => {
+    await assertLoginFree(db, body.login);
+    return one<{ id: number }>(
+      db,
+      `INSERT INTO app_user (company_id, full_name, login, password_hash, role) VALUES ($1, $2, $3, $4, 'LEADER') RETURNING id`,
+      [id, body.fullName, body.login, await hashPassword(body.password)],
+    );
+  });
+  console.log(`[platform] admin ${admin(req).id}: kompaniya ${id} uchun yangi rahbar ${u!.id} (${body.login})`);
+  res.status(201).json(await one(pool, `SELECT ${LEADER} FROM app_user u WHERE u.id = $1`, [u!.id]));
+});
+
+/**
+ * Rahbar kirish ma'lumotini tiklash: login va/yoki parol. Blok (urinishlar) olinadi, hisob faollashtiriladi,
+ * parol o'zgarsa sessiyalar yopiladi.
+ */
+platformRouter.patch('/companies/:id/leaders/:userId', async (req, res) => {
+  const id = parse(z.coerce.number().int().positive(), req.params.id);
+  const userId = parse(z.coerce.number().int().positive(), req.params.userId);
+  const body = parse(
+    z.object({ fullName: z.string().trim().min(2).max(200).optional(), login: LOGIN.optional(), password: passwordSchema.optional() }),
+    req.body,
+  );
+  await tx(async (db) => {
+    if (body.login) await assertLoginFree(db, body.login, userId);
+    const u = await one(
+      db,
+      `UPDATE app_user SET full_name = coalesce($3, full_name), login = coalesce($4, login),
+              password_hash = coalesce($5, password_hash), failed_login_count = 0, locked_until = NULL, active = true
+       WHERE id = $2 AND company_id = $1 AND role = 'LEADER' AND deleted_at IS NULL RETURNING id`,
+      [id, userId, body.fullName ?? null, body.login ?? null, body.password ? await hashPassword(body.password) : null],
+    );
+    if (!u) throw notFound('Rahbar');
+    if (body.password || body.login) {
+      await db.query('UPDATE refresh_token SET revoked_at = now() WHERE user_id = $1 AND revoked_at IS NULL', [userId]);
+    }
+  });
+  console.log(`[platform] admin ${admin(req).id}: kompaniya ${id} rahbari ${userId} kirish ma'lumoti yangilandi`);
+  res.json(await one(pool, `SELECT ${LEADER} FROM app_user u WHERE u.id = $1`, [userId]));
 });

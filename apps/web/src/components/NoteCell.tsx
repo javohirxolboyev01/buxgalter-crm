@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Popover } from '@/components/ui/popover';
 import { api } from '@/lib/api';
 import { cn } from '@/lib/cn';
-import { errorText } from '@/lib/errors';
+import { showError } from '@/lib/errors';
 
 /**
  * Jadval ichidagi mijoz izohi (client.note): Hisobot topshirish va Oylik ishlar jadvallarida.
@@ -47,7 +47,7 @@ export function NoteCell({
       for (const key of ['grid', 'works', 'clients', 'sheets']) void qc.invalidateQueries({ queryKey: [key] });
       void qc.invalidateQueries({ queryKey: ['client', clientId] });
     },
-    onError: (e) => toast.error(errorText(e, t)),
+    onError: (e) => showError(e, t),
   });
   const open = !readOnly && (editing || !note);
   const value = editing ? draft : open ? draft : note ?? '';

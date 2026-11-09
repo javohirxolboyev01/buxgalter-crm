@@ -32,6 +32,7 @@ import { ChatWidget } from './ChatWidget';
 import { DesktopNotifPrompt } from './DesktopNotifPrompt';
 import { CompanyBrand } from './CompanyBrand';
 import { SubscriptionBanner } from './SubscriptionBanner';
+import { TariffModal } from './BillingSettings';
 import { useCompanyDocumentBranding } from '@/lib/company';
 import { NotificationsDrawer, notificationParts, notificationText } from './NotificationsDrawer';
 import { TaskPanel } from './TaskPanel';
@@ -309,6 +310,7 @@ export function Layout() {
           <Outlet context={{ openTask: setOpenTask }} />
         </main>
       </div>
+      <TariffModal />
       <UrgentDialog open={urgentOpen} onClose={() => setUrgentOpen(false)} />
       <DesktopNotifPrompt enabled={!!user && !isOperator} />
       <NotificationsDrawer open={notifOpen} onClose={() => setNotifOpen(false)} onOpenTask={setOpenTask} />

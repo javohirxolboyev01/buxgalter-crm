@@ -1,12 +1,11 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader } from '@/components/ui/card';
 import { Empty } from '@/components/ui/states';
 import { invalidateTasks } from '@/hooks/tasks';
 import { api } from '@/lib/api';
-import { errorText } from '@/lib/errors';
+import { showError } from '@/lib/errors';
 import { fmtDate, monthLabel } from '@/lib/time';
 import { type ClientCard, taxTypeLabel } from '@/lib/types';
 
@@ -19,7 +18,7 @@ export function ClientReportCards({ client, isLeader }: { client: ClientCard; is
   const { t, i18n } = useTranslation();
   const qc = useQueryClient();
   const id = client.id;
-  const onErr = (e: unknown) => toast.error(errorText(e, t));
+  const onErr = (e: unknown) => showError(e, t);
   const refresh = () => {
     invalidateTasks(qc);
     void qc.invalidateQueries({ queryKey: ['client', String(id)] });

@@ -1,6 +1,7 @@
 import { lazy, Suspense } from 'react';
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { Layout } from './components/Layout';
+import { SubscriptionGate } from './components/SubscriptionLocked';
 import { Loading } from './components/ui/states';
 import { useAuth } from './lib/auth';
 import type { Role } from './lib/types';
@@ -47,7 +48,7 @@ export default function App() {
       <Routes>
         <Route path="/login" element={<Login />} />
         <Route path="/platform/*" element={<Platform />} />
-        <Route element={<Protected><Layout /></Protected>}>
+        <Route element={<Protected><SubscriptionGate><Layout /></SubscriptionGate></Protected>}>
           <Route index element={<Home />} />
           <Route path="dashboard" element={<Protected roles={L}><Dashboard /></Protected>} />
           {/* Kamchiligi bor mijozlar: import kamchiliklari va tuzatish faqat rahbarga (server ham yopiq) */}

@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Select, type SelectOption } from '@/components/ui/select';
 import { api } from '@/lib/api';
 import { cn } from '@/lib/cn';
-import { errorText } from '@/lib/errors';
+import { showError } from '@/lib/errors';
 import type { TaxType } from '@/lib/types';
 
 /**
@@ -42,7 +42,7 @@ export function useClientPatch(clientId: number) {
       for (const key of ['works', 'grid', 'clients', 'tasks', 'sheets', 'dashboard']) void qc.invalidateQueries({ queryKey: [key] });
       void qc.invalidateQueries({ queryKey: ['client', clientId] });
     },
-    onError: (e) => toast.error(errorText(e, t)),
+    onError: (e) => showError(e, t),
   });
 }
 
@@ -180,7 +180,7 @@ export function PasswordCell({ clientId, label, hasPassword, onSave }: { clientI
   const reveal = useMutation({
     mutationFn: () => api.post<{ password: string }>(`/clients/${clientId}/mehnat-password/reveal`),
     onSuccess: (r) => setValue(r.password),
-    onError: (e) => toast.error(errorText(e, t)),
+    onError: (e) => showError(e, t),
   });
   const btn = 'inline-flex h-6 w-6 shrink-0 items-center justify-center rounded text-gray-500 hover:bg-gray-100 hover:text-brand-500 disabled:opacity-40';
 

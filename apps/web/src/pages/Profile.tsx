@@ -9,7 +9,7 @@ import { Select } from '@/components/ui/select';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { showDesktopNotification, useDesktopPermission } from '@/lib/desktopNotify';
-import { errorText } from '@/lib/errors';
+import { showError } from '@/lib/errors';
 import { fmtDateTime } from '@/lib/time';
 import type { Lang, NotificationKind } from '@/lib/types';
 
@@ -19,7 +19,7 @@ export default function Profile() {
   const desktop = useDesktopPermission();
   const [pw, setPw] = useState({ currentPassword: '', newPassword: '', repeat: '' });
   const [code, setCode] = useState<{ code: string; expiresAt: string; deepLink: string | null; botEnabled: boolean } | null>(null);
-  const onErr = (e: unknown) => toast.error(errorText(e, t));
+  const onErr = (e: unknown) => showError(e, t);
 
   const save = useMutation({
     mutationFn: (body: Record<string, unknown>) => api.patch('/me', body),

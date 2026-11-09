@@ -1,5 +1,6 @@
 import type { Request, Response } from 'express';
 import { userFromToken } from '../common/auth';
+import { AppError } from '../common/errors';
 
 // Qaror: real vaqt uchun SSE (bir tomonlama oqim yetarli, WebSocket shart emas).
 // Ilova bitta instansiyada ishlaydi (~10 xodim), shuning uchun ulanishlar xotirada saqlanadi.
@@ -9,6 +10,8 @@ const connections = new Map<number, Set<Response>>();
 export async function sseHandler(req: Request, res: Response) {
   // EventSource sarlavha yubora olmaydi: access token query'da (qisqa muddatli)
   const user = await userFromToken(String(req.query.token ?? ''));
+  // Yopiq kompaniya (tarif + imtiyozli davr o'tgan): real vaqt oqimi (bildirishnoma, chat) berilmaydi
+  if (user.locked) throw new AppError(402, 'SUBSCRIPTION_LOCKED', 'Kompaniya tarifi tugagan');
   res.writeHead(200, {
     'Content-Type': 'text/event-stream',
     'Cache-Control': 'no-cache, no-transform',

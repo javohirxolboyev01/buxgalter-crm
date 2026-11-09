@@ -16,7 +16,7 @@ import { useClientIssues, useDashboardClients } from '@/hooks/clientIssues';
 import { useOpenTask } from '@/hooks/outlet';
 import { api, qs } from '@/lib/api';
 import { cn } from '@/lib/cn';
-import { errorText } from '@/lib/errors';
+import { showError } from '@/lib/errors';
 import { fmtDateTime, fmtDuration, startOfMonthIso, startOfWeekIso, todayIso } from '@/lib/time';
 import type { DashboardAccountants } from '@/lib/types';
 
@@ -60,7 +60,7 @@ export default function Dashboard() {
       void qc.invalidateQueries({ queryKey: ['accountants'] });
       void qc.invalidateQueries({ queryKey: ['sheets', 'review'] });
     },
-    onError: (e) => toast.error(errorText(e, t)),
+    onError: (e) => showError(e, t),
   });
 
   const issues = useClientIssues(clients.data);

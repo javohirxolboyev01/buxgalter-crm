@@ -20,7 +20,7 @@ import { useOpenTask } from '@/hooks/outlet';
 import { api, qs } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { cn } from '@/lib/cn';
-import { errorText } from '@/lib/errors';
+import { showError } from '@/lib/errors';
 import { currentMonth, fmtDate, fmtShortDue } from '@/lib/time';
 import { CLIENT_STATUSES, type ClientCard as ClientCardData, type ClientStatus, TAX_TYPE_OPTIONS, type Task, type TaxType, taxTypeLabel } from '@/lib/types';
 
@@ -88,7 +88,7 @@ export default function ClientCard() {
     if (q.data) setForm(toForm(q.data));
   }, [q.data]);
 
-  const onErr = (e: unknown) => toast.error(errorText(e, t));
+  const onErr = (e: unknown) => showError(e, t);
   const refresh = () => {
     invalidateTasks(qc);
     void qc.invalidateQueries({ queryKey: ['client', id] });

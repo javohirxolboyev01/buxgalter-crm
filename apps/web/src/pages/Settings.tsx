@@ -13,14 +13,16 @@ import { TableSkeleton } from '@/components/ui/skeleton';
 import { Switch } from '@/components/ui/switch';
 import { ApiError, api } from '@/lib/api';
 import { cn } from '@/lib/cn';
-import { errorText } from '@/lib/errors';
+import { errorText, showError } from '@/lib/errors';
 import { fmtDate } from '@/lib/time';
 import type { ReportType, RoutineWork, UrgentTemplate } from '@/lib/types';
 import { useSearchParams } from 'react-router-dom';
+import { BillingSettings } from '@/components/BillingSettings';
 import { CompanySettings } from '@/components/CompanySettings';
+import { useCompany } from '@/lib/company';
 
-type Tab = 'company' | 'reports' | 'routines' | 'templates' | 'general';
-const TABS: Tab[] = ['company', 'reports', 'routines', 'templates', 'general'];
+type Tab = 'company' | 'billing' | 'reports' | 'routines' | 'templates' | 'general';
+const TABS: Tab[] = ['company', 'billing', 'reports', 'routines', 'templates', 'general'];
 const MAX_ROUTINES = 10;
 
 /** Tahrir -> "Saqlash" -> o'zgarishlar xulosasi -> tasdiqlash */
@@ -91,7 +93,7 @@ function ReportTypesTab() {
       // Muddat kuni karta, vazifalar va jadvallarda ham ko'rinadi: hammasi yangilansin
       for (const key of ['settings', 'grid', 'client', 'tasks', 'works', 'dashboard']) void qc.invalidateQueries({ queryKey: [key] });
     },
-    onError: (e) => toast.error(errorText(e, t)),
+    onError: (e) => showError(e, t),
   });
   const name = (r: ReportType) => (i18n.language === 'ru' ? r.nameRu : r.name);
   const months = t('months', { returnObjects: true }) as string[];
@@ -402,7 +404,7 @@ function TemplatesTab() {
   const [text, setText] = useState('');
   const [edit, setEdit] = useState<Record<string, string>>({});
   const refresh = () => qc.invalidateQueries({ queryKey: ['settings', 'templates'] });
-  const onErr = (e: unknown) => toast.error(errorText(e, t));
+  const onErr = (e: unknown) => showError(e, t);
   const add = useMutation({ mutationFn: () => api.post('/settings/urgent-templates', { text }), onSuccess: () => { setText(''); void refresh(); }, onError: onErr });
   const upd = useMutation({ mutationFn: (p: { id: string; text: string }) => api.patch(`/settings/urgent-templates/${p.id}`, { text: p.text }), onSuccess: () => { toast.success(t('common.saved')); void refresh(); }, onError: onErr });
   const [removing, setRemoving] = useState<UrgentTemplate | null>(null);
@@ -463,7 +465,7 @@ function OverdueReminderCard() {
       toast.success(t('common.saved'));
       void qc.invalidateQueries({ queryKey: ['settings', 'overdue-reminder'] });
     },
-    onError: (e) => toast.error(errorText(e, t)),
+    onError: (e) => showError(e, t),
   });
   if (!draft) return null;
 
@@ -552,9 +554,9 @@ function GeneralTab() {
       void qc.invalidateQueries({ queryKey: ['settings', 'general'] });
       void qc.invalidateQueries({ queryKey: ['works'] });
     },
-    onError: (e) => toast.error(errorText(e, t)),
+    onError: (e) => showError(e, t),
   });
-  const genDry = useMutation({ mutationFn: () => api.post<any>('/generator/run?dryRun=true'), onError: (e) => toast.error(errorText(e, t)) });
+  const genDry = useMutation({ mutationFn: () => api.post<any>('/generator/run?dryRun=true'), onError: (e) => showError(e, t) });
   return (
     <div className="space-y-4">
       <Card>
@@ -589,9 +591,15 @@ function GeneralTab() {
   );
 }
 
+/** Tarif va to'lovlar: kompaniya ma'lumoti (tarif narxlari, muddat) kerak */
+function BillingTab() {
+  const q = useCompany();
+  return <QueryState q={q}>{q.data && <BillingSettings company={q.data} />}</QueryState>;
+}
+
 export default function Settings() {
   const { t } = useTranslation();
-  // Tab URL'da (?tab=company): tarif bannerida to'g'ridan-to'g'ri havola
+  // Tab URL'da (?tab=billing): tarif bannerida to'g'ridan-to'g'ri havola
   const [params, setParams] = useSearchParams();
   const tab: Tab = TABS.includes(params.get('tab') as Tab) ? (params.get('tab') as Tab) : 'company';
   const setTab = (x: Tab) => setParams(x === 'company' ? {} : { tab: x }, { replace: true });
@@ -607,6 +615,7 @@ export default function Settings() {
         ))}
       </div>
       {tab === 'company' && <CompanySettings />}
+      {tab === 'billing' && <BillingTab />}
       {tab === 'reports' && <ReportTypesTab />}
       {tab === 'routines' && <RoutinesTab />}
       {tab === 'templates' && <TemplatesTab />}

@@ -7,7 +7,7 @@ import { toast } from 'sonner';
 import { invalidateTasks, taskTitle, useAccountants } from '@/hooks/tasks';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
-import { errorText } from '@/lib/errors';
+import { showError } from '@/lib/errors';
 import { fmtDateTime } from '@/lib/time';
 import { type Task, type TaskDetail, type TaskTransfer, TRANSFER_REASONS, type TransferReason } from '@/lib/types';
 import { Button } from './ui/button';
@@ -31,7 +31,7 @@ export function useTransferDecision() {
   const { t } = useTranslation();
   const qc = useQueryClient();
   const onErr = (e: unknown) => {
-    toast.error(errorText(e, t));
+    showError(e, t);
     invalidateTasks(qc);
   };
   const accept = useMutation({
@@ -75,7 +75,7 @@ export function TransferDialog({ task, open, onClose }: { task: Task; open: bool
       toast.success(t('transfer.sent', { to }));
       onClose();
     },
-    onError: (e) => toast.error(errorText(e, t)),
+    onError: (e) => showError(e, t),
   });
 
   const textRequired = reasonCode === 'OTHER';
@@ -186,7 +186,7 @@ export function TransferSection({ task }: { task: TaskDetail }) {
       invalidateTasks(qc);
       toast.info(t('transfer.withdrawn'));
     },
-    onError: (e) => toast.error(errorText(e, t)),
+    onError: (e) => showError(e, t),
   });
 
   const p = task.pendingTransfer;

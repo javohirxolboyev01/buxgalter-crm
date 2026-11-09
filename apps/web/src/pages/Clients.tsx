@@ -24,7 +24,7 @@ import { useOpenTask } from '@/hooks/outlet';
 import { api, qs } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { cn } from '@/lib/cn';
-import { errorText } from '@/lib/errors';
+import { showError } from '@/lib/errors';
 import { monthLabel, shiftMonth, workDueDate, workMonth } from '@/lib/time';
 import { type AdvanceResult, CLIENT_STATUSES, TAX_TYPE_OPTIONS, type Task, type WorkCell, type WorkColumn, type WorkState, type Works, type WorksRow } from '@/lib/types';
 
@@ -157,12 +157,12 @@ export default function Clients() {
                 invalidateTasks(qc);
                 toast.info(t('task.undone'));
               })
-              .catch((e) => toast.error(errorText(e, t)));
+              .catch((e) => showError(e, t));
           },
         },
       });
     },
-    onError: (e) => toast.error(errorText(e, t)),
+    onError: (e) => showError(e, t),
   });
   // Rahbar: Excel kabi 1 / 0 / X (V31), holat to'smaydi. "1" — Bajarildi, 5 soniya ichida bekor qilish mumkin
   const setCell = useMutation({
@@ -183,12 +183,12 @@ export default function Clients() {
                 invalidateTasks(qc);
                 toast.info(t('task.undone'));
               })
-              .catch((e) => toast.error(errorText(e, t)));
+              .catch((e) => showError(e, t));
           },
         },
       });
     },
-    onError: (e) => toast.error(errorText(e, t)),
+    onError: (e) => showError(e, t),
   });
   const pending = (clientId: number, routineTypeId: number) =>
     (advance.isPending && advance.variables?.clientId === clientId && advance.variables.routineTypeId === routineTypeId) ||
@@ -486,7 +486,7 @@ function BaselineDialog({ row, col, colName, onClose }: { row: WorksRow; col: Wo
       void qc.invalidateQueries({ queryKey: ['client', row.clientId] });
       onClose();
     },
-    onError: (e) => toast.error(errorText(e, t)),
+    onError: (e) => showError(e, t),
   });
 
   return (

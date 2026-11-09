@@ -5,7 +5,7 @@ import { Building2, Search, Send, Zap } from 'lucide-react';
 import { toast } from 'sonner';
 import { api, qs } from '@/lib/api';
 import { cn } from '@/lib/cn';
-import { errorText } from '@/lib/errors';
+import { showError } from '@/lib/errors';
 import { localInputToIso, todayAtLocalInput } from '@/lib/time';
 import type { AccountantOption, Client, Paged, UrgentTemplate } from '@/lib/types';
 import { invalidateTasks } from '@/hooks/tasks';
@@ -68,7 +68,7 @@ export function UrgentDialog({ open, onClose }: { open: boolean; onClose: () => 
       toast.success(t('urgent.created'));
       onClose();
     },
-    onError: (e) => toast.error(errorText(e, t)),
+    onError: (e) => showError(e, t),
   });
 
   const canSubmit = !!client && !!assigneeId && (!!text.trim() || !!templateId) && !create.isPending;

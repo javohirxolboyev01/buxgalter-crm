@@ -59,9 +59,9 @@
     @apply w-full rounded-md bg-white p-2 sm:p-4;
   }
 
-  /* Jadvalli sahifa: ekran balandligi (header 56px + main padding), sahifa emas — faqat jadval aylanadi */
+  /* Jadvalli sahifa: ekran balandligi (header 56px + tarif banneri + main padding), sahifa emas — faqat jadval aylanadi */
   .page-fill {
-    @apply md:flex md:h-[calc(100dvh-56px-2rem)] md:flex-col;
+    @apply md:flex md:h-[calc(100dvh_-_56px_-_2rem_-_var(--banner-h,0px))] md:flex-col;
   }
 
   /* Sidebar menyu elementlari */

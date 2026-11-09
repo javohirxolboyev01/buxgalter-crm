@@ -5,7 +5,7 @@ import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { useAccountants } from '@/hooks/tasks';
 import { api } from '@/lib/api';
-import { errorText } from '@/lib/errors';
+import { showError } from '@/lib/errors';
 import { type ClientStatus, type Lead, TAX_TYPE_OPTIONS, type TaxType } from '@/lib/types';
 import { Button } from './ui/button';
 import { Dialog } from './ui/dialog';
@@ -68,7 +68,7 @@ export function NewClientDialog({
       if (onCreated) onCreated({ id, stir: form.stir });
       else navigate(`/clients/${id}`);
     },
-    onError: (e) => toast.error(errorText(e, t)),
+    onError: (e) => showError(e, t),
   });
 
   return (

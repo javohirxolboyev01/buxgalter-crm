@@ -9,7 +9,7 @@ import { invalidateTasks } from '@/hooks/tasks';
 import { ApiError, api, qs } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { cn } from '@/lib/cn';
-import { errorText } from '@/lib/errors';
+import { showError } from '@/lib/errors';
 import { fmtDateTime } from '@/lib/time';
 import type { ImportReport, PreviousImport, ReviewItem } from '@/lib/types';
 import { FileDrop } from './FileDrop';
@@ -112,7 +112,7 @@ function ImportDialog({ kind, open, onClose }: { kind: ImportKind; open: boolean
     onError: (e) => {
       if (e instanceof ApiError && e.code === 'FILE_ALREADY_IMPORTED') warnDuplicate(e.details as PreviousImport);
       else if (e instanceof ApiError && e.code === 'WRONG_FILE_KIND') toast.error(t(`sheets.wrongKind.${kind}`), { duration: 8000 });
-      else toast.error(errorText(e, t));
+      else showError(e, t);
     },
   });
 

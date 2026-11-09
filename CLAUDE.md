@@ -42,7 +42,7 @@ Bu fayl loyiha ildizida `CLAUDE.md` nomi bilan turadi. Har bosqichda shu konteks
 
 ## 4. Rollar va ruxsatlar
 
-- **Platforma admini (SaaS egasi):** alohida jadval (`platform_admin`) va alohida JWT; `/platform` paneli: kompaniya yaratadi (rahbari bilan), tarif narxi, to'lov kiritadi, bloklaydi, rahbar parolini tiklaydi. Kompaniya ichidagi ma'lumot bilan ishlamaydi. Quyidagi rollar — **kompaniya ichida**, faqat o'z kompaniyasini ko'radi.
+- **Platforma admini (SaaS egasi):** alohida jadval (`platform_admin`) va alohida JWT; `/platform` paneli: kompaniya yaratadi (rahbari bilan), tarif narxi, to'lov kiritadi, bloklaydi, rahbarlar login/parolini tiklaydi yoki yangi rahbar ochadi (buxgalter/operatorni rahbar o'zi boshqaradi). Kompaniya ichidagi ma'lumot bilan ishlamaydi. Quyidagi rollar — **kompaniya ichida**, faqat o'z kompaniyasini ko'radi.
 
 - **Rahbar (3):** hamma mijoz, hamma vazifa, dashboard, sozlamalar, buxgalter tayinlash, shoshilinch vazifa.
 - **Buxgalter (7):** faqat o'ziga biriktirilgan mijozlar va ularning vazifalari. Istisno: "Hisobot topshirish" jadvali buxgalterga biriktirilmaydi — barcha korxonalarni ko'radi, lekin faqat ko'radi (katak, holat belgisi, izoh o'zgarmaydi, mijoz kartasiga o'tmaydi).
@@ -51,7 +51,8 @@ Bu fayl loyiha ildizida `CLAUDE.md` nomi bilan turadi. Har bosqichda shu konteks
 
 ## 5. Ma'lumotlar modeli (asos)
 
-- `company` (V46): name, status (ACTIVE | BLOCKED), plan (MONTHLY | YEARLY), paid_until, logo (bytea ≤300 KB, PNG/JPG/WEBP), contact_phone, note, is_template (1-kompaniya — seed shabloni). `tariff`: code, months, price. `company_payment`: plan, periods, amount, paid_from, paid_until (faqat qo'shiladi). `platform_admin`.
+- `company` (V46): name, status (ACTIVE | BLOCKED), plan (MONTHLY | YEARLY), paid_until, logo (bytea ≤300 KB, PNG/JPG/WEBP), contact_phone, note, is_template (1-kompaniya — seed shabloni). `tariff`: code, months, price. `company_payment`: plan, periods, amount, paid_from, paid_until (faqat qo'shiladi). `platform_admin`. `platform_setting` (V47, `payment_info`: karta rekvizitlari).
+- `payment_request` (V47, RLS): plan, periods, amount (tarif narxi × davr), screenshot (bytea ≤5 MB, PNG/JPG/WEBP), note, status (PENDING | APPROVED | REJECTED | CANCELLED), reject_reason, created_by, reviewed_by (platform_admin), payment_id → `company_payment`. Kompaniyada bitta PENDING.
 - Barcha quyidagi jadvallarda `company_id` (RLS). `login` — global unikal (kirishda kompaniya so'ralmaydi); STIR, hisobot kodi, sozlama kaliti, import fayl xeshi — kompaniya ichida unikal.
 - `user` (role: LEADER | ACCOUNTANT | OPERATOR, til, telegram_chat_id)
 - `lead` (operator bazasi, `client`dan alohida): stir (unique), name, director, phone, address, registered_at, status (NEW | NO_ANSWER | CALL_LATER | MEETING | HAS_ACCOUNTANT | REJECTED | WON | CONVERTED), next_call_date, converted_client_id; `lead_call`: har qo'ng'iroq natijasi + izoh. Rahbar Excel yuklaydi (STIR bo'yicha takror va mavjud mijozlar o'tkaziladi). HAS_ACCOUNTANT/REJECTED — yopiladi. WON — rahbarga bildirishnoma (`LEAD_WON`), operatorga ko'rinmaydi. Rahbar mijozga aylantiradi (CONVERTED). Qayta qo'ng'iroq eslatmasi faqat ilovada ("Bugun qo'ng'iroq" ro'yxati).
@@ -199,7 +200,10 @@ Chatda fayl (V43, V44, rahbar qarori): 📎 menyusi Telegram kabi — «Rasm yok
 ### 6.13 SaaS: tarif va kompaniya brendi (V46)
 - Tarif faqat muddat bilan farq qiladi (hamma funksiya ochiq): **Oylik** (1 oy) va **Yillik** (12 oy); narxni platforma admini qo'yadi.
 - `paid_until` kuni oxirigacha (Asia/Tashkent) amal qiladi. O'tsa — **faqat o'qish**: yozish so'rovlari 402 `SUBSCRIPTION_EXPIRED` (o'z profili va bildirishnomani o'qish bundan mustasno), hammaga qizil banner; vazifa generatsiyasi va eslatmalar shu kompaniyada to'xtaydi. 7 kundan kam qolsa rahbarga sariq banner.
-- To'lov qo'lda (Click/Payme yo'q): platforma admini kiritadi, muddat tugamagan bo'lsa `paid_until`dan, tugagan bo'lsa bugundan davom etadi; joriy oy vazifalari darhol yaratiladi.
+- **Imtiyozli davr** (`TARIFF_GRACE_DAYS` = 3, `TODO(tasdiqlash)`): faqat o'qish rejimi `paid_until`dan keyin 3 kun; banner yopilish sanasini aytadi. Keyin kompaniya **yopiladi** (`locked`): server faqat `/api/me`, `GET /api/company`, `/api/company/billing`, `/api/company/payment-requests` ni ochiq qoldiradi, qolgani (ko'rish ham, SSE ham) 402 `SUBSCRIPTION_LOCKED`. Ilovada (`SubscriptionGate`): rahbar kirsa faqat «Tarif va to'lovlar» ekrani, buxgalter va operator — "Kompaniya tarifi tugagan, rahbaringizga murojaat qiling" ekrani (Chiqish, Tekshirish). Ma'lumot o'chirilmaydi; chek tasdiqlansa hammasi qaytadi (ekran 60 soniyada o'zi yangilanadi).
+- Trial va bepul tarif **yo'q** (rahbar qarori).
+- To'lov kartaga o'tkazma (Click/Payme integratsiyasi yo'q, V47): rahbar Sozlamalar → «Tarif va to'lovlar» tabida (joriy tarif, Oylik/Yillik kartalari — yillikda oylikka nisbatan tejam, to'lovlar tarixi jadvali) «Sotib olish / Uzaytirish» bosib platforma kartasini ko'radi, tarif va davrni tanlaydi, pul o'tkazib chek skrinshotini yuboradi (muddat o'tgan bo'lsa ham — 402 dan istisno). Platforma admini panelda chekni ko'rib **tasdiqlaydi** (kelgan summani kiritadi → odatdagi `company_payment`) yoki sababi bilan **rad etadi**; rahbar kutilayotgan chekni bekor qila oladi. `TELEGRAM_PLATFORM_CHAT_ID` sozlangan bo'lsa yangi chek haqida bot xabar beradi. Platforma admini to'lovni chek so'rovisiz ham qo'lda kiritishi mumkin. Muddat tugamagan bo'lsa `paid_until`dan, tugagan bo'lsa bugundan davom etadi; joriy oy vazifalari darhol yaratiladi.
+- **Tarifni tugatish** (V48, platforma admini, kompaniya oynasida): `paid_until` = kecha; tanlov — «Imtiyozli davr bilan» (3 kun faqat o'qish, keyin yopiladi) yoki «Darhol yopish» (`company.lock_from` = bugun, imtiyozsiz). `lock_from` faqat `lock_from > paid_until` bo'lsa amal qiladi — to'lovdan keyin o'zi e'tiborsiz qoladi. To'lov/chek tasdig'i bugundan qayta ochadi. Bloklashdan farqi: rahbar kirib to'lay oladi.
 - Bloklangan kompaniya: kirish yopiq (403 `COMPANY_BLOCKED`), sessiyalar yopiladi.
 - Yangi kompaniya: hisobot turlari, oylik ishlar va sozlamalar shablondan nusxa (`fn_company_seed`) — keyin kompaniya o'zi moslaydi.
 - Sozlamalar → Kompaniya (rahbar): nom va logo — menyu, sarlavha, chat va brauzer sarlavhasida. Brauzer tab ikonkasi (favicon) ham kompaniya logosi. Login sahifasi, `/platform` va yuklanish animatsiyasi — neytral mahsulot belgisi (`components/Logo.tsx`, `public/favicon.svg`, i18n `app.name`); hech bir kompaniya brendi ishlatilmaydi.
@@ -223,9 +227,9 @@ Haqiqiy jadval ustunlari:
 ## 8. Tizimda yo'q (qilmang)
 
 - CRM'dan qo'ng'iroq qilish
-- Fayl yuklash (istisno: ichki chatdagi rasm/video/ovozli xabar/hujjat, V43–V44 — 6.12)
+- Fayl yuklash (istisno: ichki chatdagi rasm/video/ovozli xabar/hujjat, V43–V44 — 6.12; kompaniya logosi va tarif to'lovi cheki — 6.13)
 - 1C va soliq.uz bilan avtomatik bog'lanish
-- Kompaniya mijozlaridan to'lov qabul qilish (platforma tarif to'lovi — faqat qo'lda yozib qo'yiladi, 6.13)
+- Kompaniya mijozlaridan to'lov qabul qilish (platforma tarif to'lovi — kartaga o'tkazma + chek, admin tasdiqlaydi, 6.13)
 - Mijozga SMS/Telegram xabar
 
 ## 9. Zaxira va xavfsizlik
@@ -240,3 +244,4 @@ Haqiqiy jadval ustunlari:
 2. Vazifa faqat buxgalterga o'tkaziladi, rahbarga emas (V40).
 3. Chatda o'chirilgan xabar fayli Telegram kanalidan o'chirilmaydi (arxiv), fayl chegarasi 20 MB (V43).
 4. SaaS (V46): tarif narxlari 0 (platformadan kiritiladi); login global unikal; kompaniyalar o'zi ro'yxatdan o'tmaydi — platforma admini yaratadi; Telegram chat-fayl ombori kanali barcha kompaniyalarga bitta; muddat tugaganda generatsiya to'xtaydi (to'lovda joriy oy yaratiladi, o'tgan oylar emas).
+5. Tarif cheki (V47): karta rekvizitlari bo'sh — platforma panelidan kiritiladi; tasdiq/rad haqida rahbarga alohida bildirishnoma yo'q (Sozlamalar → Tarif va to'lovlar'da holat ko'rinadi, tekshirilayotganda 30 soniyada yangilanadi).

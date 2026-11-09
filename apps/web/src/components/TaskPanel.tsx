@@ -6,7 +6,7 @@ import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
-import { errorText } from '@/lib/errors';
+import { showError } from '@/lib/errors';
 import { fmtDateTime, fmtDuration } from '@/lib/time';
 import type { TaskDetail, TaskStatus } from '@/lib/types';
 import { invalidateTasks, taskTitle, taskTone, useChangeStatus } from '@/hooks/tasks';
@@ -58,7 +58,7 @@ export function TaskPanel({ taskId, onClose }: { taskId: number | null; onClose:
   const [item, setItem] = useState('');
   useEffect(() => setNote(task?.note ?? ''), [task?.id, task?.note]);
 
-  const onErr = (e: unknown) => toast.error(errorText(e, t));
+  const onErr = (e: unknown) => showError(e, t);
   const refresh = () => invalidateTasks(qc);
   const saveNote = useMutation({ mutationFn: () => api.patch(`/tasks/${taskId}`, { note }), onSuccess: () => { refresh(); toast.success(t('common.saved')); }, onError: onErr });
   const addItem = useMutation({ mutationFn: () => api.post(`/tasks/${taskId}/checklist`, { text: item }), onSuccess: () => { setItem(''); refresh(); }, onError: onErr });

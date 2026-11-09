@@ -23,7 +23,7 @@ import { useOpenTask } from '@/hooks/outlet';
 import { api, qs } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { cn } from '@/lib/cn';
-import { errorText } from '@/lib/errors';
+import { showError } from '@/lib/errors';
 import { fmtIsoDate, monthLabel, shiftMonth, workMonth } from '@/lib/time';
 import { type CellState, CLIENT_STATUSES, type Grid, TAX_TYPE_OPTIONS, type Task, type TaxType, taxTypeLabel } from '@/lib/types';
 
@@ -61,12 +61,12 @@ export default function Monthly() {
                 invalidateTasks(qc);
                 toast.info(t('task.undone'));
               })
-              .catch((e) => toast.error(errorText(e, t)));
+              .catch((e) => showError(e, t));
           },
         },
       });
     },
-    onError: (e) => toast.error(errorText(e, t)),
+    onError: (e) => showError(e, t),
   });
   // Soliq turi almashsa ochiq vazifalar bekor qilinadi: tasdiqlanadi (birinchi marta tanlash — tasdiqsiz)
   const [newOpen, setNewOpen] = useState(false);
@@ -99,7 +99,7 @@ export default function Monthly() {
     try {
       await api.download(`/monthly-grid/export.xlsx${qs({ month })}`, `hisobot-${month}.xlsx`);
     } catch (e) {
-      toast.error(errorText(e, t));
+      showError(e, t);
     } finally {
       setBusy(null);
     }
@@ -114,7 +114,7 @@ export default function Monthly() {
       ]);
       setPrintData({ grid, ...pdfInfo });
     } catch (e) {
-      toast.error(errorText(e, t));
+      showError(e, t);
       setBusy(null);
     }
   };
@@ -371,7 +371,7 @@ function NewReportClientDialog({ onClose, onCreated }: { onClose: () => void; on
       onClose();
       onCreated(form.stir);
     },
-    onError: (e) => toast.error(errorText(e, t)),
+    onError: (e) => showError(e, t),
   });
   return (
     <Dialog
@@ -452,7 +452,7 @@ function RemoveClientConfirm({ clientId, name, onClose }: { clientId: number; na
       for (const key of ['grid', 'works', 'clients']) void qc.invalidateQueries({ queryKey: [key] });
       onClose();
     },
-    onError: (e) => toast.error(errorText(e, t)),
+    onError: (e) => showError(e, t),
   });
   return (
     <Dialog
