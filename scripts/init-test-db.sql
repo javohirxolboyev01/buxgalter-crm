@@ -1,0 +1,2 @@
+CREATE DATABASE buxcrm_test;
+CREATE DATABASE buxcrm_e2e;
