@@ -19,6 +19,9 @@ beforeAll(async () => {
   A2 = api(await token('acc2'));
 });
 
+// V46: hisobot turi id'lari har kompaniyada o'zicha (shablondan nusxa) — kod bo'yicha olinadi
+const jshdsTypeId = async () => (await one(pool, `SELECT id FROM report_type WHERE code = 'JSHDS'`)).id as number;
+
 describe('auth', () => {
   it('noto\'g\'ri parol 401, 5 marta xato -> bloklash 423', async () => {
     await createUser('victim', 'ACCOUNTANT');
@@ -203,7 +206,7 @@ describe('sozlamalar', () => {
     const r = await L.post('/api/settings/routine-works', { name: '11-ish' });
     expect(r.status).toBe(409);
     expect(r.body.code).toBe('ROUTINE_LIMIT');
-    expect((await A1.patch('/api/settings/report-types/1', { dueDay: 10 })).status).toBe(403);
+    expect((await A1.patch(`/api/settings/report-types/${await jshdsTypeId()}`, { dueDay: 10 })).status).toBe(403);
     expect((await A1.get('/api/settings/report-types')).status).toBe(200);
   });
 
@@ -218,10 +221,11 @@ describe('sozlamalar', () => {
     const due = async (id: number) =>
       (await one(pool, `SELECT to_char(due_at AT TIME ZONE 'Asia/Tashkent', 'DD') AS d FROM task WHERE id = $1`, [id])).d;
     const doneBefore = await due(tasks[1].id);
-    expect((await L.patch('/api/settings/report-types/1', { dueDay: 25 })).status).toBe(200);
+    const jshds = await jshdsTypeId();
+    expect((await L.patch(`/api/settings/report-types/${jshds}`, { dueDay: 25 })).status).toBe(200);
     expect(await due(tasks[0].id)).toBe('25');
     expect(await due(tasks[1].id)).toBe(doneBefore);
-    await L.patch('/api/settings/report-types/1', { dueDay: 15 });
+    await L.patch(`/api/settings/report-types/${jshds}`, { dueDay: 15 });
     expect(await due(tasks[0].id)).toBe('15');
     await pool.query(`UPDATE task SET status = 'TODO', done_at = NULL WHERE id = $1`, [tasks[1].id]);
   });

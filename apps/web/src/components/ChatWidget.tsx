@@ -9,7 +9,7 @@ import { ApiError, api, qs } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { cn } from '@/lib/cn';
 import { TZ } from '@/lib/time';
-import { Logo } from './Logo';
+import { CompanyBrand } from './CompanyBrand';
 import type { ChatAttachmentKind, ChatContact, ChatMessage } from '@/lib/types';
 import {
   AttachmentView,
@@ -242,7 +242,7 @@ function ContactList({ onPick, onClose, meId }: { onPick: (id: number) => void; 
     <>
       <div className="flex h-14 shrink-0 items-center justify-between border-b border-gray-200 px-4 dark:border-[#1F2937]">
         <h2 className="flex items-center gap-2 text-base font-semibold text-gray-900">
-          <Logo variant="row" className="h-6 w-auto" />
+          <CompanyBrand compact className="max-w-[200px]" />
           <span className="leading-none text-gray-400" aria-hidden="true">—</span>
           <span className="leading-none">{t('chat.title')}</span>
         </h2>

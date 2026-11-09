@@ -1,5 +1,5 @@
 {
-  "name": "buxgalteriya-crm",
+  "name": "buxcrm-saas",
   "private": true,
   "workspaces": [
     "apps/api",

@@ -207,7 +207,7 @@ async function importLeads(db: Db, rows: unknown[][], actorId: number) {
     }
     const ins = await db.query(
       `INSERT INTO lead (stir, name, name_normalized, director, phone, address, registered_at, imported_by)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8) ON CONFLICT (stir) DO NOTHING`,
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8) ON CONFLICT (company_id, stir) DO NOTHING`,
       [r.stir, r.name, normalizeName(r.name), r.director, r.phone, r.address, r.registeredAt, actorId],
     );
     out.push({ row: r.row, stir: r.stir, name: r.name, action: ins.rowCount ? 'NEW' : 'EXISTING_LEAD' });

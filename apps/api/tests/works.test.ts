@@ -1,7 +1,7 @@
 import { DateTime } from 'luxon';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { currentPeriod } from '../src/common/time';
-import { tx } from '../src/db';
+import { asSystem, tx } from '../src/db';
 import { createClient } from '../src/modules/clients';
 import { generatePeriod } from '../src/modules/generator';
 import { api, one, pool, resetDb, seedTeam, token } from './helpers';
@@ -102,9 +102,12 @@ describe('oylik ishlar (/api/works)', () => {
     expect((await A1.post(`/api/works/${aos}/${ids.bank}/undo-advance`)).body.code).toBe('NOT_UNDOABLE');
     await A1.post(`/api/works/${aos}/${ids.bank}/advance`);
     // set_updated_at trigger updated_at'ni qayta now() qilmasin
-    await pool.query(`ALTER TABLE client_routine_baseline DISABLE TRIGGER trg_client_routine_baseline_updated;
+    // DDL — tizim rejimida (app_tenant roli jadval egasi emas)
+    await asSystem(() =>
+      pool.query(`ALTER TABLE client_routine_baseline DISABLE TRIGGER trg_client_routine_baseline_updated;
       UPDATE client_routine_baseline SET updated_at = now() - interval '1 minute';
-      ALTER TABLE client_routine_baseline ENABLE TRIGGER trg_client_routine_baseline_updated;`);
+      ALTER TABLE client_routine_baseline ENABLE TRIGGER trg_client_routine_baseline_updated;`),
+    );
     expect((await A1.post(`/api/works/${aos}/${ids.bank}/undo-advance`)).body.code).toBe('UNDO_EXPIRED');
   });
 

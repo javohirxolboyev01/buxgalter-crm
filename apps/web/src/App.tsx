@@ -17,6 +17,8 @@ const Profile = lazy(() => import('./pages/Profile'));
 const Audit = lazy(() => import('./pages/Audit'));
 const Leads = lazy(() => import('./pages/Leads'));
 const ClientIssues = lazy(() => import('./pages/ClientIssues'));
+// SaaS egasi paneli: kompaniya sessiyasidan alohida (o'z login va tokeni)
+const Platform = lazy(() => import('./pages/Platform'));
 
 /** UI darajasidagi himoya (qulaylik uchun). Haqiqiy ruxsat tekshiruvi serverda. */
 function Protected({ roles, children }: { roles?: Role[]; children: React.ReactNode }) {
@@ -44,6 +46,7 @@ export default function App() {
     <Suspense fallback={<Loading className="h-screen animate-none" />}>
       <Routes>
         <Route path="/login" element={<Login />} />
+        <Route path="/platform/*" element={<Platform />} />
         <Route element={<Protected><Layout /></Protected>}>
           <Route index element={<Home />} />
           <Route path="dashboard" element={<Protected roles={L}><Dashboard /></Protected>} />

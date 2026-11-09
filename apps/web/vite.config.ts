@@ -7,9 +7,9 @@ export default defineConfig({
   plugins: [react()],
   resolve: { alias: { '@': path.resolve(__dirname, 'src') } },
   server: {
-    port: 5174,
+    port: 5175,
     proxy: {
-      '/api': { target: process.env.API_URL ?? 'http://localhost:8090', changeOrigin: false },
+      '/api': { target: process.env.API_URL ?? 'http://localhost:8091', changeOrigin: false },
     },
   },
 });

@@ -15,20 +15,24 @@ export const config = {
   env,
   isProd: env === 'production',
   isTest: env === 'test',
-  port: Number(process.env.PORT ?? 8080),
+  port: Number(process.env.PORT ?? 8091),
   databaseUrl:
     (env === 'test' ? process.env.TEST_DATABASE_URL : process.env.DATABASE_URL) ??
-    (env === 'test' ? 'postgres://localhost:5432/buxcrm_test' : 'postgres://localhost:5432/buxcrm'),
+    (env === 'test' ? 'postgres://localhost:5432/buxcrm_saas_test' : 'postgres://localhost:5432/buxcrm_saas'),
   jwtAccessSecret: process.env.JWT_ACCESS_SECRET ?? 'dev-access-secret-change-me-0123456789abcdef',
   jwtRefreshSecret: process.env.JWT_REFRESH_SECRET ?? 'dev-refresh-secret-change-me-0123456789abcdef',
   accessTtlSec: Number(process.env.JWT_ACCESS_TTL_SEC ?? 15 * 60),
   refreshTtlDays: Number(process.env.JWT_REFRESH_TTL_DAYS ?? 7),
-  corsOrigins: (process.env.CORS_ORIGIN ?? 'http://localhost:5173').split(',').map((s) => s.trim()),
-  bootstrapLeader: {
-    login: process.env.BOOTSTRAP_LEADER_LOGIN ?? '',
-    password: process.env.BOOTSTRAP_LEADER_PASSWORD ?? '',
-    fullName: process.env.BOOTSTRAP_LEADER_NAME ?? 'Rahbar',
+  corsOrigins: (process.env.CORS_ORIGIN ?? 'http://localhost:5175').split(',').map((s) => s.trim()),
+  // Platforma (SaaS egasi) admini: shu login bazada bo'lmasa ishga tushishda yaratiladi.
+  // Kompaniyalarni u yaratadi; har kompaniyaning rahbarini kompaniya yaratilganda kiritadi.
+  platformAdmin: {
+    login: process.env.PLATFORM_ADMIN_LOGIN ?? '',
+    password: process.env.PLATFORM_ADMIN_PASSWORD ?? '',
+    fullName: process.env.PLATFORM_ADMIN_NAME ?? 'Platforma admini',
   },
+  platformTokenTtlSec: Number(process.env.PLATFORM_TOKEN_TTL_SEC ?? 8 * 3600),
+
   telegram: {
     token: process.env.TELEGRAM_BOT_TOKEN ?? '',
     username: process.env.TELEGRAM_BOT_USERNAME ?? '',

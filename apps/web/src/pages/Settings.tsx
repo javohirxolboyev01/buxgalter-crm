@@ -16,8 +16,11 @@ import { cn } from '@/lib/cn';
 import { errorText } from '@/lib/errors';
 import { fmtDate } from '@/lib/time';
 import type { ReportType, RoutineWork, UrgentTemplate } from '@/lib/types';
+import { useSearchParams } from 'react-router-dom';
+import { CompanySettings } from '@/components/CompanySettings';
 
-type Tab = 'reports' | 'routines' | 'templates' | 'general';
+type Tab = 'company' | 'reports' | 'routines' | 'templates' | 'general';
+const TABS: Tab[] = ['company', 'reports', 'routines', 'templates', 'general'];
 const MAX_ROUTINES = 10;
 
 /** Tahrir -> "Saqlash" -> o'zgarishlar xulosasi -> tasdiqlash */
@@ -588,8 +591,11 @@ function GeneralTab() {
 
 export default function Settings() {
   const { t } = useTranslation();
-  const [tab, setTab] = useState<Tab>('reports');
-  const tabs: Tab[] = ['reports', 'routines', 'templates', 'general'];
+  // Tab URL'da (?tab=company): tarif bannerida to'g'ridan-to'g'ri havola
+  const [params, setParams] = useSearchParams();
+  const tab: Tab = TABS.includes(params.get('tab') as Tab) ? (params.get('tab') as Tab) : 'company';
+  const setTab = (x: Tab) => setParams(x === 'company' ? {} : { tab: x }, { replace: true });
+  const tabs = TABS;
   return (
     <div>
       <PageHeader title={t('settings.title')} />
@@ -600,6 +606,7 @@ export default function Settings() {
           </button>
         ))}
       </div>
+      {tab === 'company' && <CompanySettings />}
       {tab === 'reports' && <ReportTypesTab />}
       {tab === 'routines' && <RoutinesTab />}
       {tab === 'templates' && <TemplatesTab />}

@@ -7,16 +7,18 @@ import helmet from 'helmet';
 import { requireAuth, requireStaff } from './common/auth';
 import { errorHandler } from './common/errors';
 import { config } from './config';
-import { pool } from './db';
+import { asAnonymous, asSystem, pool } from './db';
 import { authRouter, meRouter } from './modules/auth';
 import { chatRouter } from './modules/chat';
 import { clientsRouter } from './modules/clients';
+import { companyRouter } from './modules/company';
 import { auditRouter, dashboardRouter } from './modules/dashboard';
 import { sseHandler } from './modules/events';
 import { generatorRouter } from './modules/generator';
 import { gridRouter } from './modules/grid';
 import { leadsRouter } from './modules/leads';
 import { notificationsRouter } from './modules/notifications';
+import { platformRouter } from './modules/platform';
 import { settingsRouter } from './modules/settings';
 import { sheetsRouter } from './modules/sheets/routes';
 import { tasksRouter } from './modules/tasks';
@@ -44,9 +46,15 @@ export function createApp() {
   app.use(cookieParser());
 
   app.get('/api/health', async (_req, res) => {
-    const r = await pool.query(`SELECT current_setting('TimeZone') AS tz`);
+    const r = await asSystem(() => pool.query(`SELECT current_setting('TimeZone') AS tz`));
     res.json({ status: 'UP', db: 'UP', timezone: r.rows[0].tz, time: new Date().toISOString() });
   });
+
+  // Multi-tenant (V46): har /api so'rov avval anonim kontekstda — RLS hech qaysi kompaniya qatorini ko'rsatmaydi.
+  // requireAuth xodimning kompaniyasini o'rnatadi; login/refresh va platforma paneli tizim rejimiga o'tadi.
+  app.use('/api', (_req, _res, next) => asAnonymous(() => next()));
+  app.use('/api/platform', platformRouter);
+  app.use('/api/company', companyRouter);
 
   // Buxgalteriya bo'limlari operatorga yopiq: u faqat /api/leads bilan ishlaydi (serverda, frontend yashirishiga tayanmay)
   const staff = [requireAuth, requireStaff];

@@ -1,16 +1,28 @@
 import { config } from '../src/config';
 import { currentPeriod } from '../src/common/time';
-import { one, pool, tx } from '../src/db';
+import { asSystem, one, pool, tx, withCompany } from '../src/db';
 import { migrate } from '../src/migrate';
 import { hashPassword } from '../src/modules/auth';
 import { createClient } from '../src/modules/clients';
 import { runGenerator } from '../src/modules/generator';
 
 // Faqat Playwright e2e bazasi uchun (e2e-server.ts): 1 rahbar, 3 buxgalter, 1 sotuv operatori, 10 namuna mijoz.
-// Dev/prod bazaga demo ma'lumot yozilmaydi: birinchi rahbar .env BOOTSTRAP_LEADER_* dan yaratiladi.
+// Dev/prod bazaga demo ma'lumot yozilmaydi: kompaniyalarni platforma admini (/platform) yaratadi.
+// SaaS (V46): hammasi bitta demo kompaniya ichida.
 export async function seedE2e() {
   if (config.isProd) throw new Error('E2E seed prod muhitida ishlatilmaydi');
   await migrate();
+  const companyId = await asSystem(async () => {
+    const found = await one<{ id: number }>(pool, `SELECT id FROM company WHERE name = 'Demo Buxgalteriya' AND NOT is_template`);
+    if (found) return found.id;
+    const c = await one<{ id: number }>(pool, `INSERT INTO company (name, plan, paid_until) VALUES ('Demo Buxgalteriya', 'YEARLY', NULL) RETURNING id`);
+    await pool.query('SELECT fn_company_seed($1)', [c!.id]);
+    return c!.id;
+  });
+  await withCompany(companyId, () => seedCompany());
+}
+
+async function seedCompany() {
   const exists = await one<{ n: number }>(pool, 'SELECT count(*) AS n FROM client');
   if (exists!.n > 0) {
     console.log('Bazada mijozlar bor, seed o\'tkazib yuborildi');

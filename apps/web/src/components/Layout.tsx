@@ -30,7 +30,8 @@ import { useTheme } from '@/lib/theme';
 import type { AppNotification, Lang } from '@/lib/types';
 import { ChatWidget } from './ChatWidget';
 import { DesktopNotifPrompt } from './DesktopNotifPrompt';
-import { Logo } from './Logo';
+import { CompanyBrand } from './CompanyBrand';
+import { SubscriptionBanner } from './SubscriptionBanner';
 import { NotificationsDrawer, notificationParts, notificationText } from './NotificationsDrawer';
 import { TaskPanel } from './TaskPanel';
 import { UrgentDialog } from './UrgentDialog';
@@ -188,7 +189,7 @@ export function Layout() {
         <div className={cn('hidden h-14 shrink-0 items-center border-b border-gray-200 xl:flex', wide ? '-mx-3.5 justify-between pl-5 pr-3.5' : '-mx-2 justify-center px-2')}>
           {wide && (
             <Link to="/" title={t('nav.home')} className="flex min-w-0 items-center rounded-md transition-opacity hover:opacity-80">
-              <Logo variant="row" className="h-8 w-auto" />
+              <CompanyBrand className="max-w-[180px]" />
             </Link>
           )}
           <button type="button" title={t(wide ? 'nav.collapse' : 'nav.openMenu')} aria-label={t(wide ? 'nav.collapse' : 'nav.openMenu')} onClick={toggleSidebar} className="menu-item menu-item-inactive group h-11 w-auto cursor-pointer">
@@ -259,8 +260,8 @@ export function Layout() {
           <button type="button" onClick={() => setMobileOpen((v) => !v)} aria-label={t('nav.menu')} className="flex h-10 w-10 cursor-pointer items-center justify-center rounded-lg text-gray-500 xl:hidden">
             {mobileOpen ? <X className="h-6 w-6" /> : <AlignJustify className="h-6 w-6" />}
           </button>
-          <Link to="/" title={t('nav.home')} className="mr-2 flex items-center xl:hidden">
-            <Logo variant="row" className="h-7 w-auto" />
+          <Link to="/" title={t('nav.home')} className="mr-2 flex min-w-0 items-center xl:hidden">
+            <CompanyBrand compact className="max-w-[45vw]" />
           </Link>
           {isLeader && (
             <button
@@ -301,6 +302,7 @@ export function Layout() {
             )}
           </button>
         </header>
+        <SubscriptionBanner />
         <main id="main" className="w-full grow p-2 sm:p-4">
           <Outlet context={{ openTask: setOpenTask }} />
         </main>

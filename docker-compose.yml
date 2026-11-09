@@ -3,7 +3,7 @@ services:
     image: postgres:16
     restart: unless-stopped
     environment:
-      POSTGRES_DB: ${POSTGRES_DB:-buxcrm}
+      POSTGRES_DB: ${POSTGRES_DB:-buxcrm_saas}
       POSTGRES_USER: ${POSTGRES_USER:-buxcrm}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-buxcrm_dev_password}
       TZ: Asia/Tashkent
@@ -13,10 +13,10 @@ services:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
-      # Test bazasi (buxcrm_test) birinchi ishga tushishda yaratiladi
+      # Test va e2e bazalari (buxcrm_saas_test, buxcrm_saas_e2e) birinchi ishga tushishda yaratiladi
       - ./scripts/init-test-db.sql:/docker-entrypoint-initdb.d/10-test-db.sql:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-buxcrm} -d ${POSTGRES_DB:-buxcrm}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-buxcrm} -d ${POSTGRES_DB:-buxcrm_saas}"]
       interval: 5s
       timeout: 3s
       retries: 10

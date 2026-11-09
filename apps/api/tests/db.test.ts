@@ -1,5 +1,6 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import { one, pool, resetDb, seedTeam } from './helpers';
+import { asSystem } from '../src/db';
 
 describe('DB darajasidagi qoidalar', () => {
   beforeAll(async () => {
@@ -15,7 +16,9 @@ describe('DB darajasidagi qoidalar', () => {
     await pool.query(`INSERT INTO audit_log (entity, entity_id, action) VALUES ('x', '1', 'TEST')`);
     await expect(pool.query(`UPDATE audit_log SET action = 'HACK'`)).rejects.toThrow(/faqat qo'shiladi/);
     await expect(pool.query(`DELETE FROM audit_log`)).rejects.toThrow(/faqat qo'shiladi/);
-    await expect(pool.query(`TRUNCATE audit_log`)).rejects.toThrow(/faqat qo'shiladi/);
+    // TRUNCATE: tenant rolida umuman huquq yo'q; jadval egasida ham trigger to'xtatadi
+    await expect(pool.query(`TRUNCATE audit_log`)).rejects.toThrow(/faqat qo'shiladi|permission denied/);
+    await expect(asSystem(() => pool.query(`TRUNCATE audit_log`))).rejects.toThrow(/faqat qo'shiladi/);
   });
 
   it('tax_type faqat AOS|QQS, STIR dublikati rad etiladi', async () => {
@@ -39,7 +42,7 @@ describe('DB darajasidagi qoidalar', () => {
 
   it('bir (mijoz, hisobot, davr) ikki marta yozilmaydi; bir foydalanuvchida ikkinchi ochiq taymer yo\'q', async () => {
     const c = await one(pool, `SELECT id FROM client WHERE stir = '123456789'`);
-    const ins = `INSERT INTO task (client_id, kind, report_type_id, period, title) VALUES ($1, 'REPORT', 1, '2026-10-01', 'JShDS') RETURNING id`;
+    const ins = `INSERT INTO task (client_id, kind, report_type_id, period, title) VALUES ($1, 'REPORT', (SELECT id FROM report_type WHERE code = 'JSHDS'), '2026-10-01', 'JShDS') RETURNING id`;
     const t = await one(pool, ins, [c.id]);
     await expect(pool.query(ins, [c.id])).rejects.toThrow(/duplicate|unique/i);
     // URGENT uchun unique qo'llanmaydi

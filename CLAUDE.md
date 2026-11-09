@@ -1,10 +1,13 @@
-# Buxgalteriya firmasi uchun CRM
+# Buxgalteriya firmalari uchun CRM — SaaS (buxcrm-saas)
 
-Buxgalterlar ishini avtomatlashtirish va rahbar nazorati uchun tizim.
+Buxgalterlar ishini avtomatlashtirish va rahbar nazorati uchun tizim — **ko'p kompaniyali SaaS**: har buxgalteriya
+firmasi oylik yoki yillik tarif sotib oladi, o'z nomi va logosi bilan ishlaydi (6.13).
+Bu loyiha `bugalteriya-crm` (bitta firma uchun) nusxasidan ajratilgan; u loyihaga tegilmaydi.
 Bu fayl loyiha ildizida `CLAUDE.md` nomi bilan turadi. Har bosqichda shu kontekstga tayaning.
 
 ## 1. Maqsad
 
+- Platforma: ko'p kompaniya, har biri alohida (ma'lumot baza darajasida ajratilgan). Quyidagi raqamlar — bitta odatiy kompaniya:
 - ~100 mijoz (80 faol, 20 nol hisobot), 7 buxgalter, 3 rahbar.
 - Vazifalar (oylik doimiy ishlar + hisobotlar) har oy o'zi yaratiladi.
 - Buxgalter "Bajarildi" bosadi, rahbarga bildirishnoma boradi.
@@ -15,7 +18,7 @@ Bu fayl loyiha ildizida `CLAUDE.md` nomi bilan turadi. Har bosqichda shu konteks
 
 ## 2. Texnologiya (0-bosqichda tanlangan: Node.js varianti)
 
-- Monorepo (npm workspaces): `apps/web`, `apps/api`, `docker-compose.yml`.
+- Monorepo (npm workspaces): `apps/web`, `apps/api`, `docker-compose.yml`. Portlar asl loyihadan farqli (bir vaqtda ishlashi uchun): dev API 8091 / web 5175, e2e 8092 / 5176; bazalar `buxcrm_saas`, `buxcrm_saas_test`, `buxcrm_saas_e2e`.
 - Frontend: React 18, TypeScript, Vite, Tailwind CSS, shadcn uslubidagi lokal komponentlar (`apps/web/src/components/ui`), TanStack Query, react-i18next.
 - UI dizayni WinPro admin CRM bilan bir xil: teal brend (`brand-500` #37a0ad), navy (#1a344d) matn, Inter shrifti, `bg-page` foni ustida oq `section-container` bloklar, chap yig'iladigan sidebar, teal sarlavhali jadvallar (`table-head`). Tokenlar `apps/web/tailwind.config.js`, umumiy sinflar `apps/web/src/index.css`da. Neytral rang — `gray-*` (qorong'i rejimda avtomatik aylanadi); `brand-*` aylanmaydi, qorong'i variant `dark:` bilan yoziladi; rangli fon ustidagi oq matn — `text-on-brand`.
 - Ochiladigan ro'yxat va sana: native `<select>`/`type="date|month|datetime-local"` ishlatilmaydi — WinPro'dagidek `ui/select.tsx` (`Select`, `options` + `onChange(value)`, `clearable` bo'sh qiymatli filtrlar uchun) va `ui/date-picker.tsx` (`DatePicker` 'yyyy-MM-dd', `MonthPicker` 'yyyy-MM', luxon asosida). Ikkalasi `ui/popover.tsx` orqali body'ga portal qilinadi (jadval/modal overflow kesmasin).
@@ -34,8 +37,12 @@ Bu fayl loyiha ildizida `CLAUDE.md` nomi bilan turadi. Har bosqichda shu konteks
 - Har bosqich oxirida: ishga tushirish buyrug'i, nimalar tekshirildi, nimalar qolgani.
 - Taxmin qilgan joyingizni `TODO(tasdiqlash):` bilan belgilang va oxirida ro'yxat qiling.
 - Qo'llangan migratsiyani o'zgartirmang (checksum xatosi beradi): yangi `V<n+1>__...sql` yozing.
+- **Multi-tenant (V46) — har yangi jadvalda majburiy:** kompaniya ma'lumoti bo'lsa `company_id bigint NOT NULL DEFAULT fn_current_company() REFERENCES company`, indeks, `ENABLE` + `FORCE ROW LEVEL SECURITY`, `tenant_isolation` siyosati (V46 dagi ifoda bilan), tenant jadvaliga FK bo'lsa kompozit FK `(company_id, x) → (company_id, id)`; unikal kalitlar `(company_id, …)`. Platforma jadvali bo'lsa — `REVOKE ALL … FROM app_tenant` (ALTER DEFAULT PRIVILEGES unga ham huquq beradi). Yangi view — `security_invoker = true`.
+- Kod: route ichida `WHERE company_id` yozish shart emas (RLS), lekin `ON CONFLICT` nishonida `company_id` bo'ladi. Fon ishi (scheduler, ishga tushish) kompaniya ma'lumotiga yozsa — `forEachCompany()` ichida; kompaniyadan tashqari ish — `asSystem()`. Kontekstsiz kod prod'da tizim rejimi, testda test kompaniyasi (id=2) — `tests/tenancy.test.ts` ajratishni tekshiradi.
 
 ## 4. Rollar va ruxsatlar
+
+- **Platforma admini (SaaS egasi):** alohida jadval (`platform_admin`) va alohida JWT; `/platform` paneli: kompaniya yaratadi (rahbari bilan), tarif narxi, to'lov kiritadi, bloklaydi, rahbar parolini tiklaydi. Kompaniya ichidagi ma'lumot bilan ishlamaydi. Quyidagi rollar — **kompaniya ichida**, faqat o'z kompaniyasini ko'radi.
 
 - **Rahbar (3):** hamma mijoz, hamma vazifa, dashboard, sozlamalar, buxgalter tayinlash, shoshilinch vazifa.
 - **Buxgalter (7):** faqat o'ziga biriktirilgan mijozlar va ularning vazifalari. Istisno: "Hisobot topshirish" jadvali buxgalterga biriktirilmaydi — barcha korxonalarni ko'radi, lekin faqat ko'radi (katak, holat belgisi, izoh o'zgarmaydi, mijoz kartasiga o'tmaydi).
@@ -44,6 +51,8 @@ Bu fayl loyiha ildizida `CLAUDE.md` nomi bilan turadi. Har bosqichda shu konteks
 
 ## 5. Ma'lumotlar modeli (asos)
 
+- `company` (V46): name, status (ACTIVE | BLOCKED), plan (MONTHLY | YEARLY), paid_until, logo (bytea ≤300 KB, PNG/JPG/WEBP), contact_phone, note, is_template (1-kompaniya — seed shabloni). `tariff`: code, months, price. `company_payment`: plan, periods, amount, paid_from, paid_until (faqat qo'shiladi). `platform_admin`.
+- Barcha quyidagi jadvallarda `company_id` (RLS). `login` — global unikal (kirishda kompaniya so'ralmaydi); STIR, hisobot kodi, sozlama kaliti, import fayl xeshi — kompaniya ichida unikal.
 - `user` (role: LEADER | ACCOUNTANT | OPERATOR, til, telegram_chat_id)
 - `lead` (operator bazasi, `client`dan alohida): stir (unique), name, director, phone, address, registered_at, status (NEW | NO_ANSWER | CALL_LATER | MEETING | HAS_ACCOUNTANT | REJECTED | WON | CONVERTED), next_call_date, converted_client_id; `lead_call`: har qo'ng'iroq natijasi + izoh. Rahbar Excel yuklaydi (STIR bo'yicha takror va mavjud mijozlar o'tkaziladi). HAS_ACCOUNTANT/REJECTED — yopiladi. WON — rahbarga bildirishnoma (`LEAD_WON`), operatorga ko'rinmaydi. Rahbar mijozga aylantiradi (CONVERTED). Qayta qo'ng'iroq eslatmasi faqat ilovada ("Bugun qo'ng'iroq" ro'yxati).
 - `client`: stir (unique), name, name_normalized, contact_person, phone, tax_type (AOS | QQS | YATT | NULL = importda tanilmagan, fayldagi matn `tax_type_raw`), tax_type_effective_from, accountant_id, status (ACTIVE | ZERO_REPORT | LIQUIDATING | ARCHIVED), note, in_reports / in_works (qaysi bo'limda, V25)
@@ -187,6 +196,15 @@ Barcha xodimlar (rahbar, buxgalter, sotuv operatori) bir-biri bilan yakkama-yakk
 
 Chatda fayl (V43, V44, rahbar qarori): 📎 menyusi Telegram kabi — «Rasm yoki video» va «Fayl» (istalgan hujjat: faqat yuklab olinadi, `attachment` + `sandbox`); rasm, video (tanlash, sudrab tashlash, Ctrl+V), ovozli xabar va dumaloq video xabar (brauzerda MediaRecorder bilan yoziladi, video xabar ≤ 60 s). Bitta xabarda bitta fayl, matn — izoh (bo'sh bo'lishi mumkin). **Ombor — Telegram yopiq kanali** (`TELEGRAM_STORAGE_CHAT_ID`, bot kanal admini): server faylni `sendDocument` bilan kanalga yuklaydi (siqilmaydi); dumaloq video xabar kanalda ham dumaloq — brauzer kvadrat (384×384) MP4 yozadi, server `sendVideoNote` qiladi (MP4 yozolmaydigan brauzerda, masalan Firefox, hujjat bo'lib qoladi), bazada faqat `file_id` va kanal posti saqlanadi. Brauzerga fayl doim server orqali (`GET /api/chat/files/:id`, faqat suhbat ishtirokchilariga, bot tokeni chiqmaydi). Chegara 20 MB (Bot API `getFile` yuklab olish chegarasi). Tanlangan video yuborishdan oldin brauzerda siqiladi (rahbar qarori, `compressVideo`): ≤ 60 s — dumaloq video xabar (384×384 MP4), uzunrog'i — oddiy video (≤ 640px, bitreyt 20 MB ga sig'adigan); asl fayl 1 GB gacha. Siqish video davomiyligicha vaqt oladi. Turlar: rasm JPG/PNG/WEBP/GIF, video MP4/WEBM/MOV, ovoz webm/ogg/mp4 (SVG/HTML rasm sifatida yo'q, faqat «Fayl» bo'lib). Rasm Telegram Desktop kabi ochiladi: pastda yuboruvchi va vaqt, kattalashtirish/burish/yuklab olish. Kanalga ism yoki matn yuborilmaydi — faqat texnik belgi. Kanal sozlanmagan bo'lsa chatda faqat matn. O'chirilgan xabarning fayli ilovada berilmaydi, kanalda arxiv sifatida qoladi (`TODO(tasdiqlash)`).
 
+### 6.13 SaaS: tarif va kompaniya brendi (V46)
+- Tarif faqat muddat bilan farq qiladi (hamma funksiya ochiq): **Oylik** (1 oy) va **Yillik** (12 oy); narxni platforma admini qo'yadi.
+- `paid_until` kuni oxirigacha (Asia/Tashkent) amal qiladi. O'tsa — **faqat o'qish**: yozish so'rovlari 402 `SUBSCRIPTION_EXPIRED` (o'z profili va bildirishnomani o'qish bundan mustasno), hammaga qizil banner; vazifa generatsiyasi va eslatmalar shu kompaniyada to'xtaydi. 7 kundan kam qolsa rahbarga sariq banner.
+- To'lov qo'lda (Click/Payme yo'q): platforma admini kiritadi, muddat tugamagan bo'lsa `paid_until`dan, tugagan bo'lsa bugundan davom etadi; joriy oy vazifalari darhol yaratiladi.
+- Bloklangan kompaniya: kirish yopiq (403 `COMPANY_BLOCKED`), sessiyalar yopiladi.
+- Yangi kompaniya: hisobot turlari, oylik ishlar va sozlamalar shablondan nusxa (`fn_company_seed`) — keyin kompaniya o'zi moslaydi.
+- Sozlamalar → Kompaniya (rahbar): nom va logo — menyu, sarlavha, chat va brauzer sarlavhasida. Login sahifasi va `/platform` — mahsulot brendi (Deft Count).
+- Telegram bot bitta (platformaniki), barcha kompaniya xodimlariga.
+
 ## 7. Excel import (jadval fayllari)
 
 Haqiqiy jadval ustunlari:
@@ -207,7 +225,7 @@ Haqiqiy jadval ustunlari:
 - CRM'dan qo'ng'iroq qilish
 - Fayl yuklash (istisno: ichki chatdagi rasm/video/ovozli xabar/hujjat, V43–V44 — 6.12)
 - 1C va soliq.uz bilan avtomatik bog'lanish
-- To'lov qabul qilish
+- Kompaniya mijozlaridan to'lov qabul qilish (platforma tarif to'lovi — faqat qo'lda yozib qo'yiladi, 6.13)
 - Mijozga SMS/Telegram xabar
 
 ## 9. Zaxira va xavfsizlik
@@ -221,3 +239,4 @@ Haqiqiy jadval ustunlari:
 1. YaTT uchun jadvalda ustuni yo'q hisobotlar (Poruchenya, dividend, norezident, yillik) X deb olingan (V33).
 2. Vazifa faqat buxgalterga o'tkaziladi, rahbarga emas (V40).
 3. Chatda o'chirilgan xabar fayli Telegram kanalidan o'chirilmaydi (arxiv), fayl chegarasi 20 MB (V43).
+4. SaaS (V46): tarif narxlari 0 (platformadan kiritiladi); login global unikal; kompaniyalar o'zi ro'yxatdan o'tmaydi — platforma admini yaratadi; Telegram chat-fayl ombori kanali barcha kompaniyalarga bitta; muddat tugaganda generatsiya to'xtaydi (to'lovda joriy oy yaratiladi, o'tgan oylar emas).

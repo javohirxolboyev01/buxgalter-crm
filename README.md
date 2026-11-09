@@ -1,6 +1,10 @@
-# Buxgalteriya CRM
+# Buxgalteriya CRM — SaaS
 
-Buxgalteriya firmasi uchun CRM: oylik vazifalar va hisobotlar avtomatik yaratiladi, buxgalter "Bajarildi" bosadi,
+Buxgalteriya firmalari uchun ko'p kompaniyali (multi-tenant) CRM. Har kompaniya oylik yoki yillik tarif bilan
+ulanadi, Sozlamalar → Kompaniya'da o'z nomi va logosini qo'yadi; ma'lumotlari boshqa kompaniyalardan baza darajasida
+(PostgreSQL RLS) ajratilgan. Platforma egasi `/platform` panelidan kompaniya yaratadi, to'lov kiritadi, bloklaydi.
+
+Har kompaniya ichida: oylik vazifalar va hisobotlar avtomatik yaratiladi, buxgalter "Bajarildi" bosadi,
 rahbar dashboard'da kim nima qilayotganini ko'radi. Ma'lumot Excel (.xlsx) importi bilan keladi; sotuv operatori
 yangi mijozlarga qo'ng'iroqlarni shu yerda yuritadi.
 Biznes qoidalari: [CLAUDE.md](CLAUDE.md).
@@ -12,21 +16,22 @@ Biznes qoidalari: [CLAUDE.md](CLAUDE.md).
 
 ```bash
 # 1. PostgreSQL 16: Docker bilan
-docker compose up -d            # buxcrm, buxcrm_test, buxcrm_e2e bazalari yaratiladi
+docker compose up -d            # buxcrm_saas, buxcrm_saas_test, buxcrm_saas_e2e bazalari yaratiladi
 #    ...yoki lokal Postgres'da:
 #    psql -d postgres -c "CREATE ROLE buxcrm LOGIN PASSWORD 'buxcrm_dev_password'"
-#    createdb -O buxcrm buxcrm && createdb -O buxcrm buxcrm_test && createdb -O buxcrm buxcrm_e2e
+#    createdb -O buxcrm buxcrm_saas && createdb -O buxcrm buxcrm_saas_test && createdb -O buxcrm buxcrm_saas_e2e
 
 # 2. Sozlamalar va paketlar
 cp .env.example .env
 npm install
 
 # 3. Ishga tushirish
-npm run dev                     # API: http://localhost:8080/api, Web: http://localhost:5173
+npm run dev                     # API: http://localhost:8091/api, Web: http://localhost:5175
 ```
 
-Demo ma'lumot yo'q: bo'sh bazada birinchi ishga tushishda `.env` dagi `BOOTSTRAP_LEADER_*` bilan rahbar yaratiladi.
-Keyin Xodimlar bo'limida buxgalterlarni qo'shing va fayllarni o'z sahifasidan yuklang ("Excel yuklash" tugmasi):
+Demo ma'lumot yo'q: bo'sh bazada birinchi ishga tushishda `.env` dagi `PLATFORM_ADMIN_*` bilan platforma admini
+yaratiladi. `http://localhost:5175/platform` ga kirib kompaniya yarating (nom, tarif, rahbar logini/paroli) — rahbar
+`/login` dan kiradi. Keyin Xodimlar bo'limida buxgalterlarni qo'shing va fayllarni o'z sahifasidan yuklang ("Excel yuklash" tugmasi):
 «Бухгалтер ишлари» fayli — Buxgalter ishlari, hisobot jadvali — Hisobot topshirish, operator bazasi — Yangi mijozlar.
 
 ## Buyruqlar
@@ -34,8 +39,8 @@ Keyin Xodimlar bo'limida buxgalterlarni qo'shing va fayllarni o'z sahifasidan yu
 | Buyruq | Nima qiladi |
 |---|---|
 | `npm run dev` | API (tsx watch) + Web (Vite, `/api` proksi) |
-| `npm test` | Backend testlari (vitest + supertest, `buxcrm_test` bazasi har faylda noldan) |
-| `npm run test:e2e -w apps/web` | Playwright smoke testlari (`buxcrm_e2e` bazasi, 8090/5174 portlar). Birinchi marta: `npx playwright install chromium` |
+| `npm test` | Backend testlari (vitest + supertest, `buxcrm_saas_test` bazasi har faylda noldan; `tenancy.test.ts` — kompaniyalar ajratilishi) |
+| `npm run test:e2e -w apps/web` | Playwright smoke testlari (`buxcrm_saas_e2e` bazasi, 8092/5176 portlar). Birinchi marta: `npx playwright install chromium` |
 | `npm run build` | API (`apps/api/dist`) va Web (`apps/web/dist`) build |
 | `npm run db:migrate` | Migratsiyalarni qo'llash (API ishga tushganda ham avtomatik) |
 | `npm run lint -w apps/web` | ESLint |
@@ -46,10 +51,11 @@ Keyin Xodimlar bo'limida buxgalterlarni qo'shing va fayllarni o'z sahifasidan yu
 | O'zgaruvchi | Ma'nosi |
 |---|---|
 | `DATABASE_URL`, `TEST_DATABASE_URL` | PostgreSQL ulanishlari |
-| `PORT` | API porti (standart 8080) |
+| `PORT` | API porti (standart 8091) |
 | `CORS_ORIGIN` | Frontend manzili (vergul bilan bir nechta) |
 | `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET` | Kamida 32 belgi, bir-biridan farqli. Prod'da zaif bo'lsa API ishga tushmaydi |
-| `BOOTSTRAP_LEADER_LOGIN/PASSWORD/NAME` | Bo'sh bazada birinchi rahbar |
+| `PLATFORM_ADMIN_LOGIN/PASSWORD/NAME` | Platforma (SaaS egasi) admini; bo'lmasa ishga tushishda yaratiladi |
+| `PLATFORM_TOKEN_TTL_SEC` | Platforma admini sessiyasi (standart 8 soat) |
 | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_BOT_USERNAME` | Telegram bot (ixtiyoriy). Bo'sh bo'lsa faqat ilova ichidagi bildirishnoma |
 | `SCHEDULER_ENABLED` | Generator, dispatcher, eslatma (standart `true`) |
 | `BACKUP_ENABLED`, `BACKUP_DIR` | API ichidan kunlik zaxira (02:30) |
@@ -73,6 +79,18 @@ scripts/backup.sh            kunlik zaxira
 ```
 
 ## Asosiy arxitektura qarorlari
+
+- **Multi-tenant: bitta baza + RLS (V46).** Har tenant jadvalida `company_id` (DEFAULT — sessiyadagi `app.company_id`),
+  `FORCE ROW LEVEL SECURITY` siyosati va kompozit FK `(company_id, x) → (company_id, id)`. Kontekst AsyncLocalStorage'da
+  (`src/db.ts`): `requireAuth` xodimning kompaniyasini o'rnatadi, har pool checkout'da ulanishga qo'llanadi. Login'dan oldingi
+  so'rov anonim (hech narsa ko'rinmaydi); tizim ishi (login, platforma, scheduler sikli) — `asSystem()`. Superuser ulanishda
+  (Railway) kompaniya so'rovlari `app_tenant` roliga o'tadi (superuser RLS'ni chetlab o'tadi). Scheduler har kompaniyani o'z
+  kontekstida aylanadi (`forEachCompany`), muddati o'tgan/bloklanganlarni o'tkazadi.
+- **Tarif:** faqat muddat (oylik / yillik), hamma funksiya ochiq. `company.paid_until` o'tsa — faqat o'qish (yozish 402
+  `SUBSCRIPTION_EXPIRED`, profil va bildirishnoma bundan mustasno). To'lov qo'lda: platforma admini kiritadi
+  (`company_payment`), muddat davom ettiriladi va joriy oy vazifalari darhol yaratiladi.
+- **Seed shablondan:** 1-kompaniya — shablon (hisobot turlari, oylik ishlar, sozlamalar). Yangi kompaniya yaratilganda
+  `fn_company_seed()` nusxalaydi; har kompaniya keyin o'zinikini o'zgartiradi.
 
 - **"X" qoidasi bitta joyda.** `fn_report_applicability(period)` SQL funksiyasi `report_type.applies_to_*`,
   mijozning shu davrdagi soliq turi (`client_tax_type_history`), holati va dividend belgisidan "qo'llanadimi" ni
@@ -101,7 +119,7 @@ scripts/backup.sh            kunlik zaxira
 1. Serverda PostgreSQL 16, Node.js 20+, nginx (HTTPS).
 2. `npm ci && npm run build`; `.env` ni prod qiymatlari bilan to'ldiring (`NODE_ENV=production`, kuchli JWT kalitlari).
 3. API: `node apps/api/dist/index.js` (systemd yoki pm2). Migratsiyalar ishga tushganda qo'llanadi.
-4. nginx: `apps/web/dist` ni statik beradi, `/api` ni `localhost:8080` ga proksi qiladi. SSE uchun
+4. nginx: `apps/web/dist` ni statik beradi, `/api` ni `localhost:8091` ga proksi qiladi. SSE uchun
    `proxy_buffering off; proxy_read_timeout 1h;` (`/api/events`). SPA uchun `try_files $uri /index.html`.
 5. Zaxira: `BACKUP_ENABLED=true` yoki cron (`scripts/backup.sh` ichida misol). Tiklash: [docs/restore.md](docs/restore.md).
 6. Telegram: @BotFather'dan token → `TELEGRAM_BOT_TOKEN`. Xodim profil sahifasidan kod olib, botga `/start <kod>` yuboradi.

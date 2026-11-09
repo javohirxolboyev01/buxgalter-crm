@@ -1,6 +1,6 @@
 import request from 'supertest';
 import { createApp } from '../src/app';
-import { one, pool, q } from '../src/db';
+import { asSystem, detectTenantRole, one, pool, q, TEST_COMPANY_ID } from '../src/db';
 import { migrate } from '../src/migrate';
 import { hashPassword } from '../src/modules/auth';
 
@@ -9,9 +9,23 @@ export { one, pool, q };
 
 /** Test bazasini noldan: public sxemani o'chirib, barcha migratsiyalarni qo'llash */
 export async function resetDb() {
-  await pool.query('DROP SCHEMA IF EXISTS public CASCADE');
-  await pool.query('CREATE SCHEMA public');
-  await migrate(pool, () => undefined);
+  await asSystem(async () => {
+    await pool.query('DROP SCHEMA IF EXISTS public CASCADE');
+    await pool.query('CREATE SCHEMA public');
+    await migrate(pool, () => undefined);
+    await createTestCompany();
+  });
+  // Superuser ulanishda (Railway) kompaniya so'rovlari app_tenant roliga o'tadi — prod'dagidek
+  await detectTenantRole();
+}
+
+/** Mavjud testlar uchun bitta kompaniya (V46): shablondan seed, muddatsiz tarif */
+export async function createTestCompany(id = TEST_COMPANY_ID, name = 'Test MChJ') {
+  await asSystem(async () => {
+  await pool.query(`INSERT INTO company (id, name, plan, paid_until) VALUES ($1, $2, 'MONTHLY', NULL)`, [id, name]);
+  await pool.query(`SELECT setval('company_id_seq', greatest((SELECT max(id) FROM company), 1))`);
+  await pool.query('SELECT fn_company_seed($1)', [id]);
+  });
 }
 
 export const PASSWORD = 'Parol123!';

@@ -165,21 +165,3 @@ usersRouter.post('/:id/reset-password', async (req, res) => {
   });
   res.json({ ok: true });
 });
-
-/**
- * Asosiy rahbar (.env: BOOTSTRAP_LEADER_*): shu login bazada bo'lmasa ishga tushishda yaratiladi.
- * Bor bo'lsa tegilmaydi — parolni u keyin Profil'da o'zgartirsa, har deploy'da eskisiga qaytmasin.
- * Shunday qilib serverga (Railway) faqat o'zgaruvchilarni qo'yish yetadi, qolgan xodimlarni rahbar saytdan qo'shadi.
- */
-export async function bootstrapLeader(login: string, password: string, fullName: string) {
-  if (!login || !password) return false;
-  const exists = await one(pool, 'SELECT id FROM app_user WHERE login = $1', [login]);
-  if (exists) return false;
-  passwordSchema.parse(password);
-  await pool.query(
-    `INSERT INTO app_user (full_name, login, password_hash, role) VALUES ($1, $2, $3, 'LEADER')`,
-    [fullName, login, await hashPassword(password)],
-  );
-  console.log(`Asosiy rahbar yaratildi: ${login}`);
-  return true;
-}

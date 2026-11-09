@@ -235,7 +235,7 @@ async function getTemplates(db: Db): Promise<Template[]> {
 async function saveTemplates(db: Db, list: Template[], actorId: number, action: string, before: unknown, after: unknown) {
   await db.query(
     `INSERT INTO setting (key, value) VALUES ('urgent_templates', $1)
-     ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`,
+     ON CONFLICT (company_id, key) DO UPDATE SET value = EXCLUDED.value`,
     [JSON.stringify(list)],
   );
   await audit(db, { actorId, entity: 'setting', entityId: 'urgent_templates', action, before, after });
@@ -294,7 +294,7 @@ settingsRouter.put('/overdue-reminder', requireLeader, async (req, res) => {
   await tx(async (db) => {
     const before = await getOverdueReminder(db);
     await db.query(
-      `INSERT INTO setting (key, value) VALUES ('overdue_reminder', $1) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`,
+      `INSERT INTO setting (key, value) VALUES ('overdue_reminder', $1) ON CONFLICT (company_id, key) DO UPDATE SET value = EXCLUDED.value`,
       [JSON.stringify(body)],
     );
     await audit(db, { actorId: u.id, entity: 'setting', entityId: 'overdue_reminder', action: 'UPDATE', before, after: body });
@@ -324,7 +324,7 @@ settingsRouter.put('/general', requireLeader, async (req, res) => {
       if (body[field] === undefined) continue;
       const before = await one(db, `SELECT value FROM setting WHERE key = $1`, [key]);
       await db.query(
-        `INSERT INTO setting (key, value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`,
+        `INSERT INTO setting (key, value) VALUES ($1, $2) ON CONFLICT (company_id, key) DO UPDATE SET value = EXCLUDED.value`,
         [key, JSON.stringify(body[field])],
       );
       await audit(db, { actorId: u.id, entity: 'setting', entityId: key, action: 'UPDATE', before: { [field]: before?.value ?? null }, after: { [field]: body[field] } });

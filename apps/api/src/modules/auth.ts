@@ -8,7 +8,7 @@ import { me, type Role, requireAuth, signAccessToken } from '../common/auth';
 import { audit, diff } from '../common/audit';
 import { AppError, parse } from '../common/errors';
 import { config } from '../config';
-import { one, pool, tx } from '../db';
+import { asSystem, one, pool, tx } from '../db';
 import { NOTIFICATION_KINDS, notificationKindsFor } from './notifications';
 import { telegramEnabled } from './telegram';
 
@@ -49,6 +49,8 @@ const PROFILE = `id, role, full_name AS "fullName", login, language, active,
   (telegram_chat_id IS NOT NULL) AS "telegramLinked", notification_prefs AS "notificationPrefs"`;
 
 export const authRouter = Router();
+// Login/refresh/logout kompaniya ma'lum bo'lishidan oldin: tizim rejimida (login global unikal)
+authRouter.use((_req, _res, next) => asSystem(() => next()));
 
 // IP bo'yicha login urinishlari cheklovi (hisob bloklashga qo'shimcha)
 const loginLimiter = rateLimit({
@@ -63,7 +65,9 @@ authRouter.post('/login', loginLimiter, async (req, res) => {
   const { login, password } = parse(z.object({ login: z.string().trim().min(1), password: z.string().min(1) }), req.body);
   const u = await one<any>(
     pool,
-    `SELECT id, role, password_hash, active, failed_login_count, locked_until > now() AS locked FROM app_user WHERE login = $1`,
+    `SELECT u.id, u.role, u.password_hash, u.active, u.failed_login_count, u.locked_until > now() AS locked,
+            c.status AS company_status
+     FROM app_user u JOIN company c ON c.id = u.company_id WHERE u.login = $1`,
     [login],
   );
   if (u?.locked) throw new AppError(423, 'ACCOUNT_LOCKED', `Hisob ${LOCK_MINUTES} daqiqaga bloklangan`);
@@ -79,6 +83,7 @@ authRouter.post('/login', loginLimiter, async (req, res) => {
     }
     throw new AppError(401, 'INVALID_CREDENTIALS', 'Login yoki parol noto\'g\'ri');
   }
+  if (u.company_status !== 'ACTIVE') throw new AppError(403, 'COMPANY_BLOCKED', 'Kompaniya bloklangan. Administratorga murojaat qiling');
   await pool.query('UPDATE app_user SET failed_login_count = 0, locked_until = NULL WHERE id = $1', [u.id]);
   const tokens = await issueTokens(res, u.id, u.role);
   const user = await one(pool, `SELECT ${PROFILE} FROM app_user WHERE id = $1`, [u.id]);
@@ -91,8 +96,9 @@ authRouter.post('/refresh', async (req, res) => {
   const rt = await one<any>(
     pool,
     `SELECT r.id, r.user_id, r.revoked_at, r.replaced_by, r.revoked_at > now() - interval '30 seconds' AS recently_revoked,
-            r.expires_at < now() AS expired, u.role, u.active
-     FROM refresh_token r JOIN app_user u ON u.id = r.user_id WHERE r.token_hash = $1`,
+            r.expires_at < now() AS expired, u.role, u.active AND c.status = 'ACTIVE' AS active
+     FROM refresh_token r JOIN app_user u ON u.id = r.user_id JOIN company c ON c.id = u.company_id
+     WHERE r.token_hash = $1`,
     [sha256(raw)],
   );
   if (!rt) throw new AppError(401, 'NO_REFRESH', 'Qayta kirish talab qilinadi');

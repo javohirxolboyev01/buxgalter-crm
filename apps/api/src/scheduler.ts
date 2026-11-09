@@ -2,6 +2,7 @@ import { execFile } from 'node:child_process';
 import path from 'node:path';
 import cron from 'node-cron';
 import { config } from './config';
+import { forEachCompany } from './common/tenancy';
 import { currentPeriod } from './common/time';
 import { runGenerator } from './modules/generator';
 import { dispatchDue, remindOverdue } from './modules/notifications';
@@ -12,10 +13,16 @@ const intervals: NodeJS.Timeout[] = [];
 const safe = (name: string, fn: () => Promise<unknown>) => () =>
   fn().catch((e) => console.error(`[scheduler] ${name}:`, e));
 
-async function generateCurrent() {
+/** Bitta kompaniya uchun joriy oy (idempotent): scheduler va tarif uzaytirilganda chaqiriladi */
+export async function generateCurrentForCompany(companyId: number) {
   const r = await runGenerator(currentPeriod(), false, null);
-  if (r.created || r.reopened) console.log(`[generator] ${r.period}: +${r.created} vazifa, ${r.reopened} qayta ochildi`);
+  if (r.created || r.reopened) {
+    console.log(`[generator] kompaniya ${companyId} ${r.period}: +${r.created} vazifa, ${r.reopened} qayta ochildi`);
+  }
 }
+
+// Har kompaniya o'z kontekstida; tarif muddati o'tganlarga vazifa va eslatma chiqmaydi (faqat o'qish rejimi)
+const generateCurrent = () => forEachCompany('generator', generateCurrentForCompany, { paidOnly: true });
 
 export function startScheduler() {
   // Har oyning 1-kuni 00:05 (Asia/Tashkent)
@@ -23,12 +30,14 @@ export function startScheduler() {
   // Ishga tushganda ham: server 1-kuni o'chiq bo'lsa, joriy oy baribir yaratiladi (idempotent)
   void safe('generator(startup)', generateCurrent)();
 
-  // Bildirishnoma dispatcher: har soniyada
+  // Bildirishnoma dispatcher: har soniyada. Tizim rejimida — navbatdagi yozuvlar allaqachon kompaniyaga tegishli
   intervals.push(setInterval(safe('dispatcher', () => dispatchDue()), 1000));
   // Muddat o'tdi eslatmasi: har daqiqa
-  intervals.push(setInterval(safe('overdue', remindOverdue), 60_000));
-  // Kechikkan mijozlar: har daqiqa tekshiradi, kuniga bir marta (sozlamadagi soatdan keyin) yuboradi
-  intervals.push(setInterval(safe('overdue-clients', () => remindOverdueClients()), 60_000));
+  intervals.push(setInterval(safe('overdue', () => forEachCompany('overdue', remindOverdue, { paidOnly: true })), 60_000));
+  // Kechikkan mijozlar: har daqiqa tekshiradi, kuniga bir marta (kompaniya sozlamasidagi soatdan keyin) yuboradi
+  intervals.push(
+    setInterval(safe('overdue-clients', () => forEachCompany('overdue-clients', () => remindOverdueClients(), { paidOnly: true })), 60_000),
+  );
 
   if (config.backup.enabled) {
     // Kunlik zaxira 02:30

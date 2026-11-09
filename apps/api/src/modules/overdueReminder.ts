@@ -156,7 +156,7 @@ export async function remindOverdueClients(now: DateTime = DateTime.now()) {
   return tx(async (db) => {
     const claimed = await db.query(
       `INSERT INTO setting (key, value) VALUES ('overdue_reminder_last_run', $1)
-       ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value WHERE setting.value IS DISTINCT FROM EXCLUDED.value`,
+       ON CONFLICT (company_id, key) DO UPDATE SET value = EXCLUDED.value WHERE setting.value IS DISTINCT FROM EXCLUDED.value`,
       [JSON.stringify(today)],
     );
     if (!claimed.rowCount) return { sent: 0, skipped: 'ALREADY_RAN' as const };

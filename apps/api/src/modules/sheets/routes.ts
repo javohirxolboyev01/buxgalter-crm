@@ -118,7 +118,7 @@ sheetsRouter.post('/import', upload.single('file'), async (req, res) => {
         );
         await db.query(
           `INSERT INTO sheet_import_file (file_hash, file_name, period, imported_by, summary) VALUES ($1, $2, $3, $4, $5)
-           ON CONFLICT (file_hash) DO UPDATE SET file_name = EXCLUDED.file_name, period = EXCLUDED.period,
+           ON CONFLICT (company_id, file_hash) DO UPDATE SET file_name = EXCLUDED.file_name, period = EXCLUDED.period,
              imported_by = EXCLUDED.imported_by, imported_at = now(), summary = EXCLUDED.summary`,
           // multer nomni latin1 deb o'qiydi: kirill/o'zbekcha nomlar buzilmasin
           [fileHash, Buffer.from(req.file!.originalname, 'latin1').toString('utf8'), `${r.period}-01`, u.id, r.summary],
