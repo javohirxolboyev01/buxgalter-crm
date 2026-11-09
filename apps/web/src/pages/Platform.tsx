@@ -106,7 +106,7 @@ function PlatformLogin({ onLogin }: { onLogin: (token: string) => void }) {
   return (
     <div className="flex min-h-screen items-center justify-center bg-page px-4">
       <form onSubmit={submit} className="section-container w-full max-w-sm space-y-4 p-6">
-        <Logo variant="row" className="mx-auto h-10 w-auto" />
+        <div className="flex justify-center"><Logo className="h-10" textClassName="text-xl" /></div>
         <h1 className="text-center text-lg font-semibold">{t('platform.login')}</h1>
         <Field label={t('login.login')} htmlFor="p-login">
           <Input id="p-login" autoComplete="username" value={login} onChange={(e) => setLogin(e.target.value)} autoFocus />
@@ -134,7 +134,7 @@ function PlatformHome({ onLogout }: { onLogout: () => void }) {
   return (
     <div className="min-h-screen bg-page">
       <header className="flex h-14 items-center gap-3 border-b border-gray-200 bg-white px-4 dark:bg-page">
-        <Logo variant="row" className="h-7 w-auto" />
+        <Logo className="h-7" textClassName="text-base" />
         <span className="hidden text-sm font-medium text-gray-500 sm:inline">{t('platform.title')}</span>
         <div className="flex-1" />
         <Button variant="ghost" size="sm" onClick={onLogout}>

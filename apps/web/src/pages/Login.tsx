@@ -137,7 +137,7 @@ export default function Login() {
           <div className="relative z-[1] flex items-center justify-center">
             <GridShape />
             <div className="flex flex-col items-center px-6 text-center">
-              <Logo variant="row" className="mb-6 h-20 w-auto text-on-brand xl:h-24" />
+              <div className="mb-6"><Logo className="h-16 xl:h-20" textClassName="text-3xl text-on-brand xl:text-4xl" /></div>
               <p className="whitespace-nowrap text-[#9ca3af]">{t('login.tagline')}</p>
             </div>
           </div>

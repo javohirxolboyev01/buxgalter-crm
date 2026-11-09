@@ -24,6 +24,20 @@ export interface Company {
 
 export const COMPANY_KEY = ['company'] as const;
 
+const DEFAULT_TITLE = 'Buxgalteriya CRM';
+const DEFAULT_FAVICON = '/favicon.svg';
+
+function setFavicon(href: string) {
+  let link = document.querySelector<HTMLLinkElement>('link[rel="icon"]');
+  if (!link) {
+    link = document.createElement('link');
+    link.rel = 'icon';
+    document.head.appendChild(link);
+  }
+  link.type = href.startsWith('data:') ? href.slice(5, href.indexOf(';')) : 'image/svg+xml';
+  link.href = href;
+}
+
 export function useCompany() {
   const { user } = useAuth();
   const q = useQuery({
@@ -32,10 +46,24 @@ export function useCompany() {
     enabled: !!user,
     staleTime: 5 * 60_000,
   });
-  // Brauzer sarlavhasi: kompaniya nomi
-  const name = q.data?.name;
-  useEffect(() => {
-    if (name) document.title = name;
-  }, [name]);
   return q;
+}
+
+/**
+ * Brauzer sarlavhasi va tab ikonkasi: kompaniya nomi va logosi (logo bo'lmasa — mahsulot belgisi).
+ * Faqat bir joyda (Layout) chaqiriladi: chiqishda mahsulotniki qaytadi.
+ */
+export function useCompanyDocumentBranding() {
+  const { data } = useCompany();
+  const name = data?.name;
+  const logo = data?.logo;
+  useEffect(() => {
+    if (!name) return;
+    document.title = name;
+    setFavicon(logo ?? DEFAULT_FAVICON);
+    return () => {
+      document.title = DEFAULT_TITLE;
+      setFavicon(DEFAULT_FAVICON);
+    };
+  }, [name, logo]);
 }

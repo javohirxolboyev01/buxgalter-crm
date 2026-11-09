@@ -32,6 +32,7 @@ import { ChatWidget } from './ChatWidget';
 import { DesktopNotifPrompt } from './DesktopNotifPrompt';
 import { CompanyBrand } from './CompanyBrand';
 import { SubscriptionBanner } from './SubscriptionBanner';
+import { useCompanyDocumentBranding } from '@/lib/company';
 import { NotificationsDrawer, notificationParts, notificationText } from './NotificationsDrawer';
 import { TaskPanel } from './TaskPanel';
 import { UrgentDialog } from './UrgentDialog';
@@ -74,6 +75,7 @@ export function Layout() {
   const { user, isLeader, logout, reload } = useAuth();
   const navigate = useNavigate();
   const qc = useQueryClient();
+  useCompanyDocumentBranding();
   const { theme, toggle: toggleTheme } = useTheme();
   const [expanded, setExpanded] = useState(readExpanded);
   const [mobileOpen, setMobileOpen] = useState(false);

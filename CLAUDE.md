@@ -202,7 +202,7 @@ Chatda fayl (V43, V44, rahbar qarori): 📎 menyusi Telegram kabi — «Rasm yok
 - To'lov qo'lda (Click/Payme yo'q): platforma admini kiritadi, muddat tugamagan bo'lsa `paid_until`dan, tugagan bo'lsa bugundan davom etadi; joriy oy vazifalari darhol yaratiladi.
 - Bloklangan kompaniya: kirish yopiq (403 `COMPANY_BLOCKED`), sessiyalar yopiladi.
 - Yangi kompaniya: hisobot turlari, oylik ishlar va sozlamalar shablondan nusxa (`fn_company_seed`) — keyin kompaniya o'zi moslaydi.
-- Sozlamalar → Kompaniya (rahbar): nom va logo — menyu, sarlavha, chat va brauzer sarlavhasida. Login sahifasi va `/platform` — mahsulot brendi (Deft Count).
+- Sozlamalar → Kompaniya (rahbar): nom va logo — menyu, sarlavha, chat va brauzer sarlavhasida. Brauzer tab ikonkasi (favicon) ham kompaniya logosi. Login sahifasi, `/platform` va yuklanish animatsiyasi — neytral mahsulot belgisi (`components/Logo.tsx`, `public/favicon.svg`, i18n `app.name`); hech bir kompaniya brendi ishlatilmaydi.
 - Telegram bot bitta (platformaniki), barcha kompaniya xodimlariga.
 
 ## 7. Excel import (jadval fayllari)
